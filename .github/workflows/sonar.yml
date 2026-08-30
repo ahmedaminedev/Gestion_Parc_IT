@@ -1,0 +1,42 @@
+name: CI Tests & SonarQube Quality Gate
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  test-and-sonar:
+    name: Build, Test & SonarQube Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Récupère l'historique complet pour SonarQube (blame data)
+
+      - name: Configuration de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Vérification du typage (Typecheck / Lint)
+        run: npm run lint
+
+      - name: Exécution des tests unitaires et génération de la couverture (LCOV)
+        run: npm run test:coverage
+
+      - name: SonarQube / SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # Ex: https://sonarcloud.io ou votre serveur interne

@@ -1,0 +1,11 @@
+{
+  "name": "OMODA & JAECOO - Gestion de Parc Informatique & Support IT",
+  "description": "Plateforme de gestion de parc informatique, inventaire et support IT pour OMODA & JAECOO.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

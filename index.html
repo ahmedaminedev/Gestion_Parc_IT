@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" as="image" href="/jaecoo_cliff_login_bg.webp" type="image/webp" fetchpriority="high" />
+    <title>OMODA &amp; JAECOO - Gestion de Parc Informatique &amp; Support IT</title>
+    <meta name="description" content="Plateforme de gestion de parc informatique, inventaire et support IT pour OMODA &amp; JAECOO." />
+    <meta name="theme-color" content="#1e293b" />
+    <meta property="og:title" content="OMODA &amp; JAECOO - Gestion de Parc Informatique" />
+    <meta property="og:description" content="Plateforme de gestion de parc informatique, inventaire et support IT pour OMODA &amp; JAECOO." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        var isMetaMaskError = function(err) {
+          if (!err) return false;
+          var msg = (typeof err === 'string' ? err : (err.message || err.reason || JSON.stringify(err))) || '';
+          return msg.toLowerCase().indexOf('metamask') !== -1 || msg.toLowerCase().indexOf('failed to connect') !== -1 || msg.toLowerCase().indexOf('ethereum') !== -1;
+        };
+        window.addEventListener('unhandledrejection', function(e) {
+          if (isMetaMaskError(e.reason)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('error', function(e) {
+          if (isMetaMaskError(e.error || e.message)) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
