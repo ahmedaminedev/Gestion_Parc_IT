@@ -8,8 +8,9 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
-import bgImage from '../../assets/images/jaecoo_cliff_login_bg.webp';
 import { authService, AuthUser } from '../../services/authService';
+
+const bgImage = '/jaecoo_cliff_login_bg.webp';
 
 interface BackofficeLoginGuardProps {
   onLoginSuccess: () => void;

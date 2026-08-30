@@ -27,7 +27,7 @@ async function startServer() {
   app.use(compression({
     level: 6,
     threshold: 1024,
-  }));
+  }) as any);
 
   // Initialize Socket.io
   const io = setupSocketIO(server);

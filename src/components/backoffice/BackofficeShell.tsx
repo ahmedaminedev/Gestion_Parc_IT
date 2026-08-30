@@ -1,7 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopHeader } from './TopHeader';
-import { authService } from '../../services/authService';
 import { itParkService } from '../../services/itParkService';
 import { chatService, IncomingCallEvent } from '../../services/chatService';
 import { BackofficeTab } from '../../types/itPark';
