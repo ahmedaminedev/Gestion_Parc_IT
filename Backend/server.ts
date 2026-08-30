@@ -76,22 +76,21 @@ app.get('/', (_req, res) => {
 });
 
 async function startServer() {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`====================================================`);
+    console.log(`✅ Serveur Backend démarré sur http://0.0.0.0:${PORT}`);
+    console.log(`🌐 Accès local: http://localhost:${PORT}`);
+    console.log(`====================================================`);
+  });
+
   try {
-    console.log('🚀 Démarrage du serveur Backend...');
+    console.log('🚀 Initialisation de la base de données Backend...');
     // 1. Connecter à la base de données
     await connectDB();
     // 2. Créer et alimenter les données initiales
     await seedInitialDatabase();
-
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`====================================================`);
-      console.log(`✅ Serveur Backend démarré sur http://0.0.0.0:${PORT}`);
-      console.log(`🌐 Accès local: http://localhost:${PORT}`);
-      console.log(`====================================================`);
-    });
   } catch (error) {
-    console.error('❌ Erreur critique lors du lancement du serveur Backend:', error);
-    process.exit(1);
+    console.warn('⚠️ Avertissement lors de la connexion initiale à la DB:', error);
   }
 }
 

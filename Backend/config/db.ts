@@ -2,9 +2,11 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { env } from './env';
 
-mongoose.set('bufferCommands', false);
-
 let mongoMemoryServer: MongoMemoryServer | null = null;
+
+export function isDbConnected(): boolean {
+  return mongoose.connection.readyState === 1;
+}
 
 export async function connectDB() {
   const targetUri = env.MONGODB_URI.trim();
@@ -13,13 +15,14 @@ export async function connectDB() {
     try {
       console.log(`📡 Tentative de connexion à MongoDB depuis .env (${targetUri})...`);
       await mongoose.connect(targetUri, {
-        serverSelectionTimeoutMS: 2500,
+        serverSelectionTimeoutMS: 2000,
+        connectTimeoutMS: 3000,
       });
       console.log(`✅ Connecté avec succès à la base de données MongoDB: ${mongoose.connection.name || targetUri}`);
       return;
     } catch (err: any) {
-      console.warn(`⚠️ Impossible de se connecter à l'URI spécifiée dans .env (${err?.message || err}).`);
-      console.log(`🔄 Initialisation du serveur MongoDB intégré en mémoire pour assurer la continuité...`);
+      console.warn(`⚠️ Impossible de se connecter à l'URI MongoDB (${err?.message || err}).`);
+      console.log(`🔄 Tentative d'initialisation du serveur MongoDB intégré en mémoire...`);
     }
   } else {
     console.warn(`⚠️ MONGODB_URI absent dans .env. Démarrage du serveur MongoDB en mémoire...`);
@@ -33,6 +36,6 @@ export async function connectDB() {
     });
     console.log(`✅ Serveur MongoDB en mémoire opérationnel (${memoryUri})`);
   } catch (error: any) {
-    console.warn('⚠️ MongoDB non connecté (en mémoire ou distant). Mode secours actif:', error?.message || error);
+    console.warn('⚠️ Mode autonome sans MongoDB actif (mémoire locale). Les accès par défaut sont disponibles:', error?.message || error);
   }
 }
