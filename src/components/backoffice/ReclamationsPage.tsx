@@ -631,7 +631,8 @@ export const ReclamationsPage: React.FC = () => {
   };
 
   return (
-    <div className="p-6 md:p-8 space-y-6 bg-[#f8fafc] min-h-screen text-gray-900 pb-16" id="reclamations-page-root">
+    <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900 pb-16" id="reclamations-page-root">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-6 lg:space-y-8">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 shadow-sm" id="reclamations-header">
         <div>
@@ -1931,6 +1932,7 @@ export const ReclamationsPage: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

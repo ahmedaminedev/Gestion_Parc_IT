@@ -368,7 +368,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
-      <div className="p-8 space-y-8 bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+        <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-8">
         {/* Header Collaborateur */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -643,6 +644,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             )}
           </div>
         </div>
+        </div>
       </div>
     );
   }
@@ -651,7 +653,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
   // VIEW: RESPONSABLE IT / DSI GLOBAL COMPLETE DASHBOARD
   // =========================================================================
   return (
-    <div id="dsi-dashboard-root" className="p-6 md:p-8 space-y-8 bg-[#f8fafc] min-h-screen text-gray-900">
+    <div id="dsi-dashboard-root" className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-8">
       {/* Title & Action Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
         <div>
@@ -1821,6 +1824,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       <div className="pt-6 border-t border-gray-200/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-gray-400">
         <p>© 2025-2026 OMODA & JAECOO TUNISIE • Système de Gestion & Supervision du Parc IT.</p>
         <p className="font-mono">Supervision DSI • Connecté MongoDB</p>
+      </div>
       </div>
     </div>
   );

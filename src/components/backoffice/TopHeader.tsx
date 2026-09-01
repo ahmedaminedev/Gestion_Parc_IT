@@ -251,7 +251,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   };
 
   return (
-    <header className="h-20 bg-white border-b border-gray-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-20 bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs w-full">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto h-full px-4 sm:px-6 md:px-8 lg:px-10 flex items-center justify-between">
       <div className="flex items-center gap-4 flex-1 max-w-xl">
         {onToggleSidebar && (
           <button
@@ -404,11 +405,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         <div className="relative">
           <button
             onClick={() => setShowUserDropdown(!showUserDropdown)}
-            className="flex items-center gap-3 p-1.5 pr-3 rounded-full hover:bg-gray-100 transition-colors cursor-pointer"
+            className="flex items-center gap-2.5 p-1 sm:p-1.5 sm:pr-3 rounded-full hover:bg-gray-100 transition-colors cursor-pointer border border-transparent hover:border-gray-200"
             id="user-menu-btn"
           >
-            <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase">
-              {user?.beneficiaire ? user.beneficiaire.slice(0, 2) : ''}
+            <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-2xs">
+              {user?.photo ? (
+                <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
+              ) : (
+                user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'
+              )}
             </div>
             <div className="text-left hidden sm:block">
               <p className="text-xs font-bold text-gray-900 leading-tight">{user?.beneficiaire || ''}</p>
@@ -418,12 +423,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
 
           {showUserDropdown && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-              <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-xs font-bold text-gray-800">{user?.beneficiaire || ''}</p>
-                <p className="text-[10px] text-gray-500">{user?.email || ''}</p>
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-xs">
+                  {user?.photo ? (
+                    <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
+                  ) : (
+                    user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'
+                  )}
+                </div>
+                <div className="overflow-hidden min-w-0">
+                  <p className="text-xs font-bold text-gray-800 truncate">{user?.beneficiaire || ''}</p>
+                  <p className="text-[10px] text-gray-500 truncate">{user?.email || ''}</p>
+                </div>
               </div>
-              <div className="px-4 py-1.5 text-[10px] text-emerald-700 font-semibold bg-emerald-50 my-1 mx-2 rounded-lg flex items-center justify-between">
+              <div className="px-4 py-1.5 text-[10px] text-emerald-700 font-semibold bg-emerald-50 my-1.5 mx-2 rounded-lg flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Session Active (MongoDB)</span>
@@ -443,7 +457,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                     className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-2 font-medium transition-colors cursor-pointer"
                   >
                     <KeyRound className="w-3.5 h-3.5 text-red-600" />
-                    <span>Mon Profil & Mot de passe</span>
+                    <span>Mon Profil & Photo</span>
                   </button>
                 )}
 
@@ -470,6 +484,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
           )}
         </div>
+      </div>
       </div>
     </header>
   );

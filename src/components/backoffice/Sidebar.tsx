@@ -85,10 +85,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
 
   return (
-    <aside className="w-64 bg-[#0c1017] text-gray-300 flex flex-col justify-between min-h-screen border-r border-gray-800 shrink-0 select-none">
-      {/* Top Header Logo */}
-      <div>
-        <div className="h-20 px-6 flex items-center justify-between border-b border-gray-800/80">
+    <aside className="w-64 bg-[#0c1017] text-gray-300 flex flex-col justify-between h-screen sticky top-0 border-r border-gray-800 shrink-0 select-none z-30 overflow-hidden">
+      {/* Scrollable Upper Area: Logo + Badge + Nav Links */}
+      <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+        <div className="h-20 px-6 flex items-center justify-between border-b border-gray-800/80 shrink-0">
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <span className="text-white font-extrabold tracking-wider text-lg font-mono">
@@ -102,7 +102,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Access Badge */}
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-3 shrink-0">
           <div className={`px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold ${
             isDSIAdmin 
               ? 'bg-red-500/10 text-red-400 border border-red-500/20' 
@@ -123,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Main Navigation Menu */}
-        <nav className="p-4 space-y-1.5">
+        <nav className="p-4 space-y-1.5 flex-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -153,8 +153,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Menu: Déconnexion & Profil */}
-      <div className="p-4 border-t border-gray-800/80 space-y-2">
+      {/* Bottom Menu: Déconnexion & Profil (Always pinned at bottom) */}
+      <div className="p-4 border-t border-gray-800/80 space-y-2 shrink-0 bg-[#0c1017]">
         <button
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -165,14 +165,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Connected User Profile Pill */}
         <div 
-          onClick={() => !isDSIAdmin && onSelectTab('profile')}
-          className={`mt-2 pt-2.5 border-t border-gray-800/60 flex items-center gap-3 bg-gray-900/60 p-2 rounded-2xl border border-gray-800 ${
-            !isDSIAdmin ? 'cursor-pointer hover:bg-gray-800/80 hover:border-gray-700 transition-colors' : ''
-          }`}
-          title={!isDSIAdmin ? 'Accéder à mon profil et sécurité' : undefined}
+          onClick={() => onSelectTab('profile')}
+          className="mt-2 pt-2.5 border-t border-gray-800/60 flex items-center gap-3 bg-gray-900/60 p-2 rounded-2xl border border-gray-800 cursor-pointer hover:bg-gray-800/80 hover:border-gray-700 transition-colors"
+          title="Accéder à mon profil et photo de profil"
         >
-          <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 flex items-center justify-center text-xs font-black border border-red-500/30 shrink-0">
-            {getInitials(user?.beneficiaire)}
+          <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 flex items-center justify-center text-xs font-black border border-red-500/30 shrink-0 overflow-hidden">
+            {user?.photo ? (
+              <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
+            ) : (
+              getInitials(user?.beneficiaire)
+            )}
           </div>
           <div className="overflow-hidden min-w-0">
             <p className="text-xs font-bold text-white truncate">

@@ -125,7 +125,8 @@ export const FacturesPage: React.FC = () => {
   const totalAttente = factures.filter(f => f.statut === 'En attente').reduce((acc, c) => acc + c.montantHT, 0);
 
   return (
-    <div className="p-8 space-y-6 bg-[#f8fafc] min-h-screen text-gray-900">
+    <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-6 lg:space-y-8">
       {pageAlert && (
         <FormAlert
           type={pageAlert.type}
@@ -401,6 +402,7 @@ export const FacturesPage: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

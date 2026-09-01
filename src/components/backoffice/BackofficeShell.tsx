@@ -95,7 +95,7 @@ export const BackofficeShell: React.FC<BackofficeShellProps> = ({ onLogout }) =>
   }, []);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen w-full bg-[#f8fafc]">
       {/* Left Dark Sidebar */}
       {sidebarOpen && (
         <Sidebar
@@ -106,14 +106,14 @@ export const BackofficeShell: React.FC<BackofficeShellProps> = ({ onLogout }) =>
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 w-full">
         <TopHeader
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onNavigateTab={(tab) => setActiveBackofficeTab(tab)}
           onLogout={onLogout}
         />
 
-        <main className="flex-1">
+        <main className="flex-1 min-w-0 w-full">
           <Suspense fallback={<PageFallback />}>
             {activeBackofficeTab === 'dashboard' && (
               <DashboardPage onNavigateTab={(tab) => setActiveBackofficeTab(tab)} />

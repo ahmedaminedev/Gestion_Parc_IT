@@ -64,6 +64,7 @@ export interface Beneficiaire {
   id: string;
   beneficiaire: string; // Nom & Prénom, e.g. "Yassine Skander"
   email: string;
+  photo?: string;
   id_Role: string;
   role: string;
   statut: 'Actif' | 'Inactif';

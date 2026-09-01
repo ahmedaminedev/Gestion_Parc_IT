@@ -520,7 +520,8 @@ export const MaterielsPage: React.FC = () => {
   });
 
   return (
-    <div className="p-8 space-y-6 bg-[#f8fafc] min-h-screen text-gray-900">
+    <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-6 lg:space-y-8">
       {/* Title & Subheader */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1466,6 +1467,7 @@ export const MaterielsPage: React.FC = () => {
         isLoading={isConfirmLoading}
         isBlocked={confirmModalConfig.isBlocked}
       />
+      </div>
     </div>
   );
 };

@@ -26,7 +26,6 @@ import {
   UserX,
   Sparkles,
   Mail,
-  Send,
   MapPin,
   PackagePlus,
   SlidersHorizontal,
@@ -119,7 +118,6 @@ export const UsersPage: React.FC = () => {
     sendWelcomeEmail: true,
   });
   const [showUserPassword, setShowUserPassword] = useState(false);
-  const [emailSendingStatus, setEmailSendingStatus] = useState<string | null>(null);
   const [copiedGeneratedPwd, setCopiedGeneratedPwd] = useState(false);
 
   // Access Modal Form Data
@@ -328,7 +326,7 @@ export const UsersPage: React.FC = () => {
       accesApp: isIT ? 'GLOBAL_BACKOFFICE' : (willGrantAccess ? 'ESPACE_RECLAMATIONS' : 'NONE'),
       statut: userFormData.statut,
       id_Emplacement: userFormData.id_Emplacement,
-      password: willGrantAccess ? (finalPassword || undefined) : undefined,
+      password: willGrantAccess && finalPassword.length > 0 ? finalPassword : undefined,
       removePassword: !willGrantAccess && editingItem ? true : undefined,
       hasPassword: willGrantAccess,
       isUserAccount: willGrantAccess,
@@ -375,7 +373,7 @@ export const UsersPage: React.FC = () => {
 
     let pwd = accessFormData.password.trim();
     if (!pwd && !accessTargetEmployee.hasPassword) {
-      // Generate default secure password if empty
+      // Generate default secure password if empty for a new account
       pwd = generateSecurePassword();
     }
 
@@ -399,7 +397,7 @@ export const UsersPage: React.FC = () => {
       isUserAccount: true,
       hasPassword: true,
       accesApp: isIT ? accessFormData.accesApp : 'ESPACE_RECLAMATIONS',
-      password: pwd || undefined,
+      password: pwd.length > 0 ? pwd : undefined,
       sendWelcomeEmail: accessFormData.sendWelcomeEmail,
     };
 
@@ -452,25 +450,6 @@ export const UsersPage: React.FC = () => {
         }
       },
     });
-  };
-
-  const handleResendWelcomeEmail = async (user: Beneficiaire) => {
-    setEmailSendingStatus(`Envoi en cours à ${user.email}...`);
-    const tempPassword = generateSecurePassword();
-    const res = await itParkService.resendWelcomeEmail({
-      email: user.email,
-      beneficiaire: user.beneficiaire,
-      tempPassword,
-      role: user.role,
-      accesApp: user.accesApp || 'ESPACE_RECLAMATIONS',
-    });
-    if (res.success) {
-      setEmailSendingStatus(`✅ Identifiants envoyés à ${user.email} (Mot de passe temporaire : ${tempPassword})`);
-      setTimeout(() => setEmailSendingStatus(null), 8000);
-    } else {
-      setEmailSendingStatus(`❌ Erreur : ${res.message}`);
-      setTimeout(() => setEmailSendingStatus(null), 6000);
-    }
   };
 
   // --- ACTIONS: ROLE MODAL ---
@@ -933,23 +912,8 @@ export const UsersPage: React.FC = () => {
   const paginatedEmployees = (activeTab === 'employees' ? paginatedItems : []) as Beneficiaire[];
 
   return (
-    <div className="p-8 space-y-8 bg-[#f8fafc] min-h-screen text-gray-900">
-      {/* Banner / Email status alert */}
-      {emailSendingStatus && (
-        <div className="p-4 bg-emerald-900 text-white rounded-2xl shadow-lg border border-emerald-700 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <Mail className="w-5 h-5 text-emerald-300" />
-            <span className="text-xs font-bold">{emailSendingStatus}</span>
-          </div>
-          <button
-            onClick={() => setEmailSendingStatus(null)}
-            className="text-emerald-300 hover:text-white cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
+    <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-8">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1334,13 +1298,6 @@ export const UsersPage: React.FC = () => {
                               <Laptop className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleResendWelcomeEmail(u)}
-                              className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                              title="Renvoyer l'email d'identifiants"
-                            >
-                              <Send className="w-4 h-4" />
-                            </button>
-                            <button
                               onClick={() => handleOpenAccessModal(u)}
                               className="p-1.5 hover:bg-purple-50 text-purple-600 hover:text-purple-700 rounded-lg transition-colors cursor-pointer"
                               title="Configurer les accès & mot de passe"
@@ -1533,15 +1490,6 @@ export const UsersPage: React.FC = () => {
                             >
                               <Laptop className="w-4 h-4" />
                             </button>
-                            {isUserAccount && (
-                              <button
-                                onClick={() => handleResendWelcomeEmail(u)}
-                                className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                                title="Renvoyer l'email d'identifiants"
-                              >
-                                <Send className="w-4 h-4" />
-                              </button>
-                            )}
                             <button
                               onClick={() => handleOpenAccessModal(u)}
                               className="p-1.5 hover:bg-amber-50 text-amber-600 hover:text-amber-700 rounded-lg transition-colors cursor-pointer"
@@ -1917,7 +1865,7 @@ export const UsersPage: React.FC = () => {
                           placeholder={editingItem ? "Laisser vide pour conserver l'actuel" : 'Ex: Password123!'}
                           value={userFormData.password}
                           onChange={e => setUserFormData({ ...userFormData, password: e.target.value })}
-                          className="w-full pl-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium"
+                          className="w-full pl-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium font-mono text-xs"
                         />
                         <button
                           type="button"
@@ -1927,6 +1875,11 @@ export const UsersPage: React.FC = () => {
                           {showUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </button>
                       </div>
+                      {editingItem && userFormData.password.trim().length > 0 && (
+                        <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                          Ce nouveau mot de passe sera enregistré dans la base de données et appliqué dès la validation.
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
@@ -2072,7 +2025,7 @@ export const UsersPage: React.FC = () => {
                 <div className="relative">
                   <input
                     type={showAccessPassword ? 'text' : 'password'}
-                    placeholder="Laissez vide pour générer automatiquement"
+                    placeholder={accessTargetEmployee.hasPassword ? "Laisser vide pour conserver le mot de passe actuel" : "Laissez vide pour générer automatiquement"}
                     value={accessFormData.password}
                     onChange={e => setAccessFormData({ ...accessFormData, password: e.target.value })}
                     className="w-full pl-3.5 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium font-mono text-xs"
@@ -2085,6 +2038,19 @@ export const UsersPage: React.FC = () => {
                     {showAccessPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {accessFormData.password.trim().length > 0 ? (
+                  <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                    Ce nouveau mot de passe sera enregistré dans la base de données et envoyé par email au collaborateur.
+                  </p>
+                ) : accessTargetEmployee.hasPassword ? (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Mot de passe actuel conservé dans la base de données (non modifié).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-blue-600 mt-1">
+                    Un mot de passe sécurisé sera généré automatiquement et enregistré dans la base de données.
+                  </p>
+                )}
               </div>
 
               {/* Checkbox envoi email */}
@@ -2705,6 +2671,7 @@ export const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

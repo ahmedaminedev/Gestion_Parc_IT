@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Mail,
   Shield,
@@ -15,12 +15,30 @@ import {
   X,
   Check,
   ArrowRight,
-  Fingerprint
+  Fingerprint,
+  Camera,
+  Upload,
+  Trash2,
+  User,
+  Sparkles,
+  Move,
 } from 'lucide-react';
 import { authService, AuthUser } from '../../services/authService';
+import { ProfilePhotoCropperModal } from './ProfilePhotoCropperModal';
 
 export const ProfilePage: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(authService.getUser());
+
+  // Part 0: Profile Photo State & Handlers
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
+  const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
+  const [photoMessage, setPhotoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+
+  // Profile Photo Cropper & Drag Adjustment Modal
+  const [isCropperOpen, setIsCropperOpen] = useState<boolean>(false);
+  const [cropperImageSrc, setCropperImageSrc] = useState<string>('');
 
   // Part 1: Change Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -50,10 +68,130 @@ export const ProfilePage: React.FC = () => {
 
   useEffect(() => {
     const unsub = authService.subscribe(() => {
-      setCurrentUser(authService.getUser());
+      const u = authService.getUser();
+      setCurrentUser(u);
+      if (u?.photo) {
+        setPreviewPhoto(u.photo);
+      }
     });
+    const u = authService.getUser();
+    if (u?.photo) {
+      setPreviewPhoto(u.photo);
+    }
     return unsub;
   }, []);
+
+  // Read image file into Data URL
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        reject(new Error('Le fichier sélectionné doit être une image (JPG, PNG, WEBP).'));
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        resolve(e.target?.result as string);
+      };
+      reader.onerror = () => reject(new Error('Erreur de lecture du fichier.'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoMessage(null);
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCropperImageSrc(dataUrl);
+      setIsCropperOpen(true);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err: any) {
+      setPhotoMessage({ type: 'error', text: err.message || 'Erreur lors du traitement de l\'image' });
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    setPhotoMessage(null);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCropperImageSrc(dataUrl);
+      setIsCropperOpen(true);
+    } catch (err: any) {
+      setPhotoMessage({ type: 'error', text: err.message || 'Erreur lors du traitement de l\'image' });
+    }
+  };
+
+  const handleOpenCropperForCurrentPhoto = () => {
+    const current = previewPhoto || currentUser?.photo;
+    if (current) {
+      setCropperImageSrc(current);
+      setIsCropperOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleSelectPreset = (presetUrl: string) => {
+    setCropperImageSrc(presetUrl);
+    setIsCropperOpen(true);
+  };
+
+  const handleSaveCroppedPhoto = async (croppedDataUrl: string) => {
+    setIsUpdatingPhoto(true);
+    try {
+      const res = await authService.updateProfile({ photo: croppedDataUrl });
+      if (res.success) {
+        setPreviewPhoto(croppedDataUrl);
+        setIsCropperOpen(false);
+        setPhotoMessage({
+          type: 'success',
+          text: 'Photo de profil ajustée et enregistrée avec succès ! Elle est désormais visible dans la barre de navigation.',
+        });
+      } else {
+        setPhotoMessage({ type: 'error', text: res.message || 'Erreur lors de l\'enregistrement' });
+      }
+    } catch (err: any) {
+      setPhotoMessage({ type: 'error', text: err.message || 'Erreur lors de la mise à jour' });
+    } finally {
+      setIsUpdatingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setPhotoMessage(null);
+    setIsUpdatingPhoto(true);
+    try {
+      const res = await authService.updateProfile({ photo: '' });
+      if (res.success) {
+        setPreviewPhoto(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setPhotoMessage({ type: 'success', text: 'Photo de profil supprimée. Vos initiales sont désormais affichées.' });
+      } else {
+        setPhotoMessage({ type: 'error', text: res.message || 'Erreur lors de la suppression' });
+      }
+    } catch (err: any) {
+      setPhotoMessage({ type: 'error', text: err.message || 'Erreur de communication avec le serveur' });
+    } finally {
+      setIsUpdatingPhoto(false);
+    }
+  };
+
+  // Avatar presets for quick selection
+  const avatarPresets = [
+    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
+  ];
 
   // OTP Countdown timer
   useEffect(() => {
@@ -210,17 +348,58 @@ export const ProfilePage: React.FC = () => {
     return name.slice(0, 2).toUpperCase();
   };
 
+  const displayPhoto = previewPhoto || currentUser?.photo;
+
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
+    <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
+      <div className="max-w-5xl 2xl:max-w-6xl mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-6 animate-in fade-in duration-200">
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/png, image/jpeg, image/jpg, image/webp, image/gif"
+        className="hidden"
+      />
+
+      {/* Header Banner with Profile Avatar */}
       <div className="bg-linear-to-r from-[#0c1017] via-[#161c24] to-[#1e293b] rounded-2xl p-5 sm:p-6 text-white border border-gray-800 shadow-lg relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-96 bg-red-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
         
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-linear-to-br from-red-600 to-rose-700 text-white flex items-center justify-center text-lg sm:text-xl font-black shadow-md shadow-red-900/30 border border-red-400/30 shrink-0">
-              {getInitials(currentUser?.beneficiaire)}
+            {/* Avatar Pill with Camera Action */}
+            <div className="relative group shrink-0">
+              <div 
+                onClick={displayPhoto ? handleOpenCropperForCurrentPhoto : () => fileInputRef.current?.click()}
+                className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-linear-to-br from-red-600 to-rose-700 text-white flex items-center justify-center text-xl sm:text-2xl font-black shadow-md shadow-red-900/30 border-2 border-red-400/40 overflow-hidden cursor-pointer relative"
+                title={displayPhoto ? "Cliquez pour ajuster le cadrage" : "Cliquez pour ajouter une photo"}
+              >
+                {displayPhoto ? (
+                  <>
+                    <img
+                      src={displayPhoto}
+                      alt={currentUser?.beneficiaire}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Move className="w-5 h-5 text-white" />
+                    </div>
+                  </>
+                ) : (
+                  <span>{getInitials(currentUser?.beneficiaire)}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg border-2 border-gray-900 cursor-pointer transition-transform group-hover:scale-110"
+                title="Téléverser une nouvelle photo"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
             </div>
+
             <div className="min-w-0">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white truncate">
@@ -274,7 +453,183 @@ export const ProfilePage: React.FC = () => {
         </div>
       )}
 
-      {/* Section Title */}
+      {/* ================= SECTION PHOTO DE PROFIL ================= */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-200/90 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+              <Camera className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 text-base">Photo de Profil</h3>
+              <p className="text-xs text-gray-500">
+                Téléversez votre photo pour l'afficher automatiquement ajustée dans la barre de navigation du Dashboard.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              Tous rôles supportés
+            </span>
+          </div>
+        </div>
+
+        {photoMessage && (
+          <div
+            className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
+              photoMessage.type === 'success'
+                ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                : 'bg-red-50 border border-red-200 text-red-700'
+            }`}
+          >
+            {photoMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            )}
+            <div className="flex-1 font-medium">{photoMessage.text}</div>
+            <button onClick={() => setPhotoMessage(null)} className="cursor-pointer text-gray-400 hover:text-gray-600">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+          {/* Preview & Navbar Simulation */}
+          <div className="md:col-span-4 flex flex-col items-center justify-center p-4 bg-gray-50 rounded-2xl border border-gray-200/80 space-y-3">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xl border-2 border-red-300 shadow-md uppercase overflow-hidden">
+                {displayPhoto ? (
+                  <img src={displayPhoto} alt="Aperçu" className="w-full h-full object-cover" />
+                ) : (
+                  <span>{getInitials(currentUser?.beneficiaire)}</span>
+                )}
+              </div>
+              {displayPhoto ? (
+                <div className="absolute -top-1 -right-1 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenCropperForCurrentPhoto}
+                    disabled={isUpdatingPhoto}
+                    className="w-7 h-7 rounded-full bg-gray-900 hover:bg-gray-800 text-white flex items-center justify-center shadow-md cursor-pointer transition-colors"
+                    title="Glisser & Ajuster le cadrage"
+                  >
+                    <Move className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    disabled={isUpdatingPhoto}
+                    className="w-7 h-7 rounded-full bg-red-600 hover:bg-red-700 text-white flex items-center justify-center shadow-md cursor-pointer transition-colors"
+                    title="Supprimer ma photo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Quick Action Button to Adjust Cadrage */}
+            {displayPhoto && (
+              <button
+                type="button"
+                onClick={handleOpenCropperForCurrentPhoto}
+                className="px-3 py-1.5 text-xs font-semibold text-gray-700 hover:text-red-600 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Move className="w-3.5 h-3.5 text-red-600" />
+                <span>Glisser / Ajuster le cadrage</span>
+              </button>
+            )}
+
+            {/* Navbar Preview Demo */}
+            <div className="w-full bg-white px-3 py-2 rounded-xl border border-gray-200 flex items-center justify-between shadow-2xs">
+              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Aperçu Navbar</span>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-[10px] border border-red-200 uppercase overflow-hidden">
+                  {displayPhoto ? (
+                    <img src={displayPhoto} alt="Miniature Navbar" className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{getInitials(currentUser?.beneficiaire)}</span>
+                  )}
+                </div>
+                <span className="text-xs font-bold text-gray-800 truncate max-w-[90px]">
+                  {currentUser?.beneficiaire?.split(' ')[0] || 'User'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Upload Dropzone & Preset selection */}
+          <div className="md:col-span-8 space-y-3">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingFile(true);
+              }}
+              onDragLeave={() => setIsDraggingFile(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
+                isDraggingFile
+                  ? 'border-red-500 bg-red-50/50 scale-[0.99]'
+                  : 'border-gray-300 hover:border-red-400 hover:bg-gray-50/80 bg-white'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2">
+                {isUpdatingPhoto ? (
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Upload className="w-5 h-5" />
+                )}
+              </div>
+              <p className="text-xs font-bold text-gray-800">
+                {isUpdatingPhoto
+                  ? 'Enregistrement en cours...'
+                  : 'Cliquez ou glissez-déposez une photo de profil'}
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Une fenêtre d'ajustement interactif s'ouvrira pour vous permettre de <strong>glisser</strong>, <strong>zoomer</strong> et <strong>centrer</strong> votre photo avant enregistrement.
+              </p>
+            </div>
+
+            {/* Quick avatar presets */}
+            <div>
+              <p className="text-[11px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
+                <User className="w-3 h-3" />
+                Ou choisissez un avatar rapide (avec possibilité d'ajuster) :
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {avatarPresets.map((presetUrl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSelectPreset(presetUrl)}
+                    className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-all hover:scale-110 cursor-pointer ${
+                      previewPhoto === presetUrl ? 'border-red-600 ring-2 ring-red-300' : 'border-gray-200'
+                    }`}
+                    title={`Choisir et ajuster Avatar ${idx + 1}`}
+                  >
+                    <img src={presetUrl} alt={`Preset ${idx + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+                {displayPhoto && (
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:text-red-600 bg-gray-100 hover:bg-red-50 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ml-auto"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Réinitialiser aux initiales
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Section Title: Password & Security */}
       <div>
         <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
           <Lock className="w-5 h-5 text-red-600" />
@@ -517,7 +872,7 @@ export const ProfilePage: React.FC = () => {
 
       </div>
 
-      {/* ================= FENÊTRE MODALE OTP (Comme requis par le prompt) ================= */}
+      {/* ================= FENÊTRE MODALE OTP ================= */}
       {isOtpModalOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl border border-gray-200 relative my-auto max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
@@ -685,6 +1040,16 @@ export const ProfilePage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ================= FENÊTRE MODALE D'AJUSTEMENT PHOTO (GLISSER / RECADRER) ================= */}
+      <ProfilePhotoCropperModal
+        isOpen={isCropperOpen}
+        imageSrc={cropperImageSrc}
+        onClose={() => setIsCropperOpen(false)}
+        onSave={handleSaveCroppedPhoto}
+        isSaving={isUpdatingPhoto}
+      />
+      </div>
     </div>
   );
 };

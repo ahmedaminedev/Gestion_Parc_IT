@@ -2,6 +2,7 @@ export interface AuthUser {
   id: string;
   beneficiaire: string;
   email: string;
+  photo?: string;
   id_Role?: string;
   role: string;
   statut?: 'Actif' | 'Inactif';
@@ -940,6 +941,52 @@ class AuthService {
       return {
         success: false,
         message: err.message || 'Erreur de connexion au serveur.',
+      };
+    }
+  }
+
+  // Profile: Update User Profile (Photo, Name, etc.)
+  public async updateProfile(payload: {
+    photo?: string;
+    beneficiaire?: string;
+  }): Promise<{ success: boolean; message: string; user?: AuthUser }> {
+    try {
+      const res = await this.fetchWithAuth('/api/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return {
+          success: false,
+          message: data.message || 'Erreur lors de la mise à jour du profil.',
+        };
+      }
+      if (data.user) {
+        this.user = {
+          ...this.user,
+          ...data.user,
+        };
+        localStorage.setItem('parcit_user', JSON.stringify(this.user));
+        this.broadcast('AUTH_REFRESHED', {
+          accessToken: this.accessToken,
+          refreshToken: this.refreshTokenValue,
+          accessTokenExpiresAt: this.accessTokenExpiresAt,
+          sessionExpiresAt: this.sessionExpiresAt,
+          maxSessionExpiresAt: this.maxSessionExpiresAt,
+          user: this.user,
+        });
+        this.notify();
+      }
+      return {
+        success: true,
+        message: data.message || 'Profil mis à jour avec succès.',
+        user: this.user || undefined,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Erreur de communication avec le serveur.',
       };
     }
   }

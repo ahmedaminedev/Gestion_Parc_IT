@@ -54,9 +54,9 @@ export function getExclusionFilter(existingId?: string) {
   const str = String(existingId).trim();
   if (!str) return {};
   if (mongoose.isValidObjectId(str)) {
-    return { _id: { $ne: str } };
+    return { _id: { $ne: new mongoose.Types.ObjectId(str) } };
   }
-  return { $and: [{ id: { $ne: str } }, { _id: { $ne: str } }] };
+  return { id: { $ne: str } };
 }
 
 // Validation d'adresse email standard

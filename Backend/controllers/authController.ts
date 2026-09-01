@@ -15,6 +15,7 @@ import { Materiel } from '../models/Materiel';
 import { Reclamation } from '../models/Reclamation';
 import { validateLoginData } from '../validators/businessValidators';
 import { sendPasswordChangedEmail, sendOtpResetEmail } from '../services/mailService';
+import { saveAvatarBase64, deleteAvatarFile } from '../services/uploadService';
 import { 
   env, 
   ACCESS_EXPIRY_MS, 
@@ -949,6 +950,7 @@ export async function login(req: Request, res: Response) {
         id: userId,
         beneficiaire: user.beneficiaire,
         email: user.email,
+        photo: user.photo || '',
         id_Role,
         role: roleName,
         accesApp: resolvedAccesApp,
@@ -1019,6 +1021,7 @@ export async function refreshToken(req: Request, res: Response) {
           id: decoded.id,
           beneficiaire: decoded.beneficiaire,
           email: decoded.email,
+          photo: decoded.photo || '',
           id_Role,
           role: roleName,
           accesApp: resolvedAccesApp,
@@ -1175,6 +1178,7 @@ export async function refreshToken(req: Request, res: Response) {
         id: user.id,
         beneficiaire: user.beneficiaire,
         email: user.email,
+        photo: user.photo || '',
         id_Role,
         role: roleName,
         accesApp: resolvedAccesApp,
@@ -1340,6 +1344,7 @@ export async function getMe(req: any, res: Response) {
       id: user.id || user._id?.toString() || req.user?.id,
       beneficiaire: user.beneficiaire || req.user?.beneficiaire || 'Utilisateur',
       email: user.email || req.user?.email,
+      photo: user.photo || req.user?.photo || '',
       id_Role,
       role: roleName,
       accesApp: resolvedAccesApp,
@@ -1547,6 +1552,93 @@ export async function resetPasswordWithOtp(req: any, res: Response) {
   } catch (err: any) {
     console.error('[PROFILE] Erreur resetPasswordWithOtp:', err);
     return res.status(500).json({ message: err.message || 'Erreur lors de la réinitialisation du mot de passe' });
+  }
+}
+
+// ================= METTRE À JOUR LE PROFIL (PHOTO, NOM, ETC.) =================
+export async function updateProfile(req: any, res: Response) {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ message: 'Authentification requise.' });
+    }
+
+    const { photo, beneficiaire } = req.body;
+    let user: any = null;
+    try {
+      if (mongoose.connection.readyState === 1) {
+        user = await User.findById(userId) || await User.findOne({ email: req.user?.email });
+      }
+    } catch (e) {}
+
+    if (!user) {
+      const fbIndex = DEFAULT_USERS_LIST.findIndex(u => u.id === userId || u.email === req.user?.email);
+      if (fbIndex >= 0) {
+        user = DEFAULT_USERS_LIST[fbIndex];
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur introuvable.' });
+    }
+
+    const targetUserId = user._id?.toString() || user.id || userId;
+
+    if (photo !== undefined) {
+      if (!photo || photo.trim() === '') {
+        // Remove avatar
+        deleteAvatarFile(user.photo);
+        user.photo = '';
+      } else if (typeof photo === 'string' && photo.startsWith('data:image/')) {
+        // Save base64 image to backend disk folder and get URL
+        const savedUrl = saveAvatarBase64(photo, targetUserId);
+        user.photo = savedUrl;
+      } else if (typeof photo === 'string') {
+        user.photo = photo.trim();
+      }
+    }
+
+    if (beneficiaire && beneficiaire.trim()) {
+      user.beneficiaire = beneficiaire.trim();
+    }
+    user.derniereActivite = "À l'instant";
+
+    if (typeof user.save === 'function') {
+      await user.save();
+    }
+
+    // Keep fallback list synchronized
+    const fbIdx = DEFAULT_USERS_LIST.findIndex(u => u.id === targetUserId || u.email === user.email);
+    if (fbIdx >= 0) {
+      if (user.photo !== undefined) (DEFAULT_USERS_LIST[fbIdx] as any).photo = user.photo;
+      if (user.beneficiaire) DEFAULT_USERS_LIST[fbIdx].beneficiaire = user.beneficiaire;
+    }
+
+    const { id_Role, roleName } = await resolveUserRole(user.id_Role, (user as any).role);
+    const resolvedAccesApp = user.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : 'ESPACE_RECLAMATIONS');
+
+    console.log(`[PROFILE 💾] Profil mis à jour pour ${user.email} (Photo URL: "${user.photo || 'aucune'}")`);
+
+    return res.json({
+      success: true,
+      message: 'Photo et profil mis à jour avec succès.',
+      user: {
+        id: user.id || user._id?.toString(),
+        beneficiaire: user.beneficiaire,
+        email: user.email,
+        photo: user.photo || '',
+        id_Role,
+        role: roleName,
+        accesApp: resolvedAccesApp,
+        isSuperAdmin: !!user.isSuperAdmin,
+        statut: user.statut || 'Actif',
+        id_Emplacement: user.id_Emplacement || '1',
+        derniereActivite: user.derniereActivite || "À l'instant",
+      }
+    });
+  } catch (err: any) {
+    console.error('[PROFILE] Erreur updateProfile:', err);
+    return res.status(500).json({ message: err.message || 'Erreur lors de la mise à jour du profil' });
   }
 }
 

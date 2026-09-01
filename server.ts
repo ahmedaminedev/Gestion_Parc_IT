@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
@@ -55,6 +56,15 @@ async function startServer() {
     req.io = io;
     next();
   });
+
+  // Static uploads directory serving (profile photos, attachments)
+  const backendUploadsPath = path.join(process.cwd(), 'Backend', 'uploads');
+  const rootUploadsPath = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(backendUploadsPath)) {
+    fs.mkdirSync(backendUploadsPath, { recursive: true });
+  }
+  app.use('/uploads', express.static(backendUploadsPath));
+  app.use('/uploads', express.static(rootUploadsPath));
 
   // API Routes
   app.use('/api/auth', authRoutes);

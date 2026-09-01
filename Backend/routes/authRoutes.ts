@@ -9,6 +9,7 @@ import {
   changePassword,
   requestPasswordResetOtp,
   resetPasswordWithOtp,
+  updateProfile,
 } from '../controllers/authController';
 import { verifyToken } from '../middleware/auth';
 
@@ -21,7 +22,9 @@ router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.get('/me', verifyToken, getMe);
 
-// Profile password management routes
+// Profile management & photo routes
+router.put('/profile', verifyToken, updateProfile);
+router.post('/profile', verifyToken, updateProfile);
 router.post('/change-password', verifyToken, changePassword);
 router.post('/request-otp', requestPasswordResetOtp);
 router.post('/reset-password-otp', resetPasswordWithOtp);

@@ -203,11 +203,12 @@ class ChatService {
       query: { 
         userId: user.id 
       },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
+      upgrade: true,
       reconnection: true,
-      reconnectionAttempts: 50,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 2000,
+      reconnectionAttempts: 100,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 3000,
       timeout: 10000,
     });
 

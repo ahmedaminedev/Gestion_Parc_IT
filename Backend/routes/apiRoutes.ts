@@ -13,6 +13,7 @@ import { EmailLog } from '../models/EmailLog';
 import { Message } from '../models/Message';
 import { Conversation } from '../models/Conversation';
 import { sendWelcomeEmail, getSmtpConfigSummary, testSmtpConnection } from '../services/mailService';
+import { saveAvatarBase64, deleteAvatarFile } from '../services/uploadService';
 import { verifyToken } from '../middleware/auth';
 import { getDashboardStats } from '../controllers/dashboardController';
 import {
@@ -235,9 +236,19 @@ router.post('/users', async (req, res) => {
       passHash = await bcrypt.hash(plainPassword, salt);
     }
 
+    let savedPhotoUrl = '';
+    if (req.body.photo) {
+      if (typeof req.body.photo === 'string' && req.body.photo.startsWith('data:image/')) {
+        savedPhotoUrl = saveAvatarBase64(req.body.photo, cleanEmail.replace(/[^a-zA-Z0-9]/g, '_'));
+      } else if (typeof req.body.photo === 'string') {
+        savedPhotoUrl = req.body.photo.trim();
+      }
+    }
+
     const newItem = new User({
       beneficiaire: beneficiaire.trim(),
       email: cleanEmail,
+      photo: savedPhotoUrl,
       id_Role: targetRole.id,
       statut: statut || 'Actif',
       id_Emplacement: id_Emplacement || '',
@@ -289,13 +300,13 @@ router.post('/users', async (req, res) => {
 router.put('/users/:id', async (req, res) => {
   try {
     const { email, password, id_Role, role, beneficiaire, id_Emplacement, statut, accesApp } = req.body;
-    const user = await User.findById(req.params.id);
+    const user = await safeFindDoc(User, req.params.id) || await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'Utilisateur/Employé introuvable' });
     }
 
-    // Validation métier complète
-    const validation = await validateUserData(req.body, req.params.id);
+    // Validation métier complète avec exclusion de l'ID courant
+    const validation = await validateUserData(req.body, String(user._id));
     if (!validation.isValid) {
       return res.status(400).json({ message: validation.message, field: validation.field });
     }
@@ -305,6 +316,17 @@ router.put('/users/:id', async (req, res) => {
     }
 
     if (beneficiaire) user.beneficiaire = beneficiaire.trim();
+    if (req.body.photo !== undefined) {
+      if (!req.body.photo || req.body.photo.trim() === '') {
+        deleteAvatarFile(user.photo);
+        user.photo = '';
+      } else if (typeof req.body.photo === 'string' && req.body.photo.startsWith('data:image/')) {
+        const savedUrl = saveAvatarBase64(req.body.photo, String(user._id || user.id));
+        user.photo = savedUrl;
+      } else if (typeof req.body.photo === 'string') {
+        user.photo = req.body.photo.trim();
+      }
+    }
     let currentRoleNom = 'Collaborateur';
     if (id_Role || role) {
       const targetRole = await resolveRoleForUser(id_Role, role);
@@ -339,40 +361,46 @@ router.put('/users/:id', async (req, res) => {
       plainPassword = `Omoda${Math.floor(1000 + Math.random() * 9000)}!`;
     }
 
+    let passwordUpdated = false;
     if (isNoAccess || req.body.removePassword === true) {
       user.password = '';
+      user.refreshTokens = [];
     } else if (plainPassword.length > 0) {
       const salt = await bcrypt.genSalt(10);
       user.password = await bcrypt.hash(plainPassword, salt);
+      user.refreshTokens = [];
+      passwordUpdated = true;
     }
 
+    user.derniereActivite = "À l'instant";
     await user.save();
+
     const allRoles = await Role.find();
     const matchedRole = allRoles.find(r => r.id === user.id_Role || r._id.toString() === user.id_Role);
     const roleName = matchedRole ? matchedRole.nom : currentRoleNom;
     const resolvedAccesApp = user.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : (user.password ? 'ESPACE_RECLAMATIONS' : 'NONE'));
 
-    // If new password was assigned or user was activated as user or welcome email explicitly requested, trigger email
+    // If new password was assigned and email was requested, send official email with the exact saved password
     const shouldSendEmail = (
       resolvedAccesApp !== 'NONE' && (
         req.body.sendWelcomeEmail === true ||
-        req.body.sendNotificationEmail === true ||
-        (plainPassword.length > 0 && req.body.sendWelcomeEmail !== false) ||
-        (wantsUserAccount && !hadPasswordBefore && req.body.sendWelcomeEmail !== false)
+        req.body.sendNotificationEmail === true
+      ) && (
+        passwordUpdated ||
+        (wantsUserAccount && !hadPasswordBefore)
       )
     );
 
-    if (shouldSendEmail && (plainPassword.length > 0 || wantsUserAccount)) {
-      const passwordToSend = plainPassword.length > 0 ? plainPassword : '(Mot de passe conservé)';
+    if (shouldSendEmail && plainPassword.length > 0) {
       try {
         await sendWelcomeEmail({
           email: user.email,
           beneficiaire: user.beneficiaire,
-          tempPassword: passwordToSend,
+          tempPassword: plainPassword,
           role: roleName,
           accesApp: resolvedAccesApp,
         });
-        console.log(`[USER UPDATED 👤] Email d'identifiants envoyé avec succès à ${user.email}`);
+        console.log(`[USER UPDATED 👤] Email d'identifiants envoyé avec succès à ${user.email} avec mot de passe enregistré.`);
       } catch (err) {
         console.error('[MAIL ERROR] Failed to send update welcome email:', err);
       }
@@ -1327,19 +1355,6 @@ router.get('/emails/logs', async (_req, res) => {
   try {
     const logs = await EmailLog.find().sort({ dateEnvoi: -1 }).limit(100);
     res.json(logs);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-router.post('/emails/send-welcome', async (req, res) => {
-  try {
-    const { email, beneficiaire, tempPassword, role, accesApp } = req.body;
-    if (!email || !beneficiaire || !tempPassword) {
-      return res.status(400).json({ message: 'Email, bénéficiaire et mot de passe temporaire requis.' });
-    }
-    const result = await sendWelcomeEmail({ email, beneficiaire, tempPassword, role, accesApp });
-    res.json(result);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

@@ -1063,29 +1063,6 @@ class ITParkService {
     }
   }
 
-  public async resendWelcomeEmail(params: {
-    email: string;
-    beneficiaire: string;
-    tempPassword: string;
-    role?: string;
-    accesApp?: string;
-  }): Promise<{ success: boolean; message?: string }> {
-    try {
-      const res = await authService.fetchWithAuth('/api/emails/send-welcome', {
-        method: 'POST',
-        body: JSON.stringify(params),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        return { success: false, message: data.message || "Erreur lors de l'envoi du mail" };
-      }
-      await this.syncFromBackend();
-      return { success: true };
-    } catch (e: any) {
-      return { success: false, message: e.message || 'Erreur réseau ou serveur' };
-    }
-  }
-
   public async resetToDefaults() {
     await this.syncFromBackend();
   }
