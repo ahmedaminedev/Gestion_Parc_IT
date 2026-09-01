@@ -4,6 +4,8 @@ import { env } from './env';
 
 let mongoMemoryServer: MongoMemoryServer | null = null;
 
+mongoose.set('bufferCommands', false);
+
 export function isDbConnected(): boolean {
   return mongoose.connection.readyState === 1;
 }
