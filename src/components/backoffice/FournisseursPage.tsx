@@ -112,7 +112,7 @@ export const FournisseursPage: React.FC = () => {
 
   return (
     <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
-      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-6 lg:space-y-8">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-5 sm:py-7 space-y-6 lg:space-y-8">
       {pageAlert && (
         <FormAlert
           type={pageAlert.type}

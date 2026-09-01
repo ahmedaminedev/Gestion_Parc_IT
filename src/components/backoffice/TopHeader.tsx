@@ -252,7 +252,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
   return (
     <header className="h-20 bg-white border-b border-gray-200 sticky top-0 z-30 shadow-xs w-full">
-      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto h-full px-4 sm:px-6 md:px-8 lg:px-10 flex items-center justify-between">
+      <div className="w-full max-w-7xl mx-auto h-full px-4 sm:px-6 md:px-8 flex items-center justify-between gap-3">
       <div className="flex items-center gap-4 flex-1 max-w-xl">
         {onToggleSidebar && (
           <button

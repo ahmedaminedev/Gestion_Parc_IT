@@ -369,7 +369,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
 
     return (
       <div className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
-        <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-8">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-5 sm:py-7 space-y-6 sm:space-y-8">
         {/* Header Collaborateur */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -399,8 +399,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         </div>
 
         {/* 4 Cards Collaborateur */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs min-w-0">
             <div className="flex items-center justify-between">
               <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                 <Laptop className="w-5 h-5" />
@@ -654,7 +654,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
   // =========================================================================
   return (
     <div id="dsi-dashboard-root" className="w-full bg-[#f8fafc] min-h-screen text-gray-900">
-      <div className="max-w-[1400px] 2xl:max-w-[1480px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 sm:py-8 space-y-8">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-5 sm:py-7 space-y-6 sm:space-y-8">
       {/* Title & Action Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
         <div>
@@ -677,38 +677,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       {/* ========================================================================= */}
       {/* SECTION A: LES 4 NOMBRES CLÉS FINANCIERS & OPÉRATIONNELS (KPI CARDS TOP) */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* KPI 1: Valeur Totale du Parc IT Actif */}
         <div
           id="kpi-valeur-parc"
           onClick={() => onNavigateTab('materiels')}
-          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative"
+          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative min-w-0 flex flex-col justify-between"
         >
-          <div className="flex items-center justify-between">
-            <div className="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center group-hover:scale-105 transition-transform">
-              <DollarSign className="w-5 h-5 text-emerald-400" />
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
+                <DollarSign className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-emerald-100 whitespace-nowrap">
+                  Actif en service
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveExplanation(EXPLANATIONS.kpi_valeur_parc);
+                  }}
+                  className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
+                  title="Cliquer pour voir le rôle et le calcul de cet indicateur"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
-                Actif en service
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveExplanation(EXPLANATIONS.kpi_valeur_parc);
-                }}
-                className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
-                title="Cliquer pour voir le rôle et le calcul de cet indicateur"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Valeur Totale du Parc IT</p>
+            <p className="text-2xl font-black text-gray-900 mt-0.5 tracking-tight truncate">
+              {metrics.valeurTotaleParcFormatte || '0 TND'}
+            </p>
           </div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3">Valeur Totale du Parc IT</p>
-          <p className="text-2xl font-black text-gray-900 mt-0.5 tracking-tight">
-            {metrics.valeurTotaleParcFormatte || '0 TND'}
-          </p>
           <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
             <span className="text-gray-500">Équipements valorisés</span>
             <span className="text-gray-900 font-bold">{metrics.totalMateriels - metrics.materielsEnPanneTotal} unités</span>
@@ -719,44 +721,48 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         <div
           id="kpi-disponibilite"
           onClick={() => onNavigateTab('materiels')}
-          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative"
+          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative min-w-0 flex flex-col justify-between"
         >
-          <div className="flex items-center justify-between">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Activity className="w-5 h-5" />
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
+                <Activity className="w-5 h-5" />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`text-[11px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg whitespace-nowrap ${
+                  metrics.tauxDisponibilite >= 90 ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'
+                }`}>
+                  Disponibilité
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveExplanation(EXPLANATIONS.kpi_disponibilite);
+                  }}
+                  className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
+                  title="Cliquer pour voir le rôle et le calcul de cet indicateur"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${
-                metrics.tauxDisponibilite >= 90 ? 'text-emerald-700 bg-emerald-50' : 'text-amber-700 bg-amber-50'
-              }`}>
-                Disponibilité
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveExplanation(EXPLANATIONS.kpi_disponibilite);
-                }}
-                className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
-                title="Cliquer pour voir le rôle et le calcul de cet indicateur"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Taux de Disponibilité</p>
+            <div className="flex items-baseline gap-2 mt-0.5 min-w-0">
+              <span className="text-2xl font-black text-emerald-600">{metrics.tauxDisponibiliteFormatte || '100%'}</span>
+              <span className="text-xs text-gray-500 font-medium truncate">opérationnel</span>
             </div>
           </div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3">Taux de Disponibilité</p>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-black text-emerald-600">{metrics.tauxDisponibiliteFormatte || '100%'}</span>
-            <span className="text-xs text-gray-500 font-medium">opérationnel</span>
-          </div>
-          {/* Progress Bar */}
-          <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
-            <div
-              className={`h-1.5 rounded-full transition-all duration-500 ${
-                metrics.tauxDisponibilite >= 90 ? 'bg-emerald-500' : 'bg-amber-500'
-              }`}
-              style={{ width: `${Math.min(100, metrics.tauxDisponibilite || 100)}%` }}
-            />
+          <div>
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-100 rounded-full h-1.5 mt-2.5 overflow-hidden">
+              <div
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  metrics.tauxDisponibilite >= 90 ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+                style={{ width: `${Math.min(100, metrics.tauxDisponibilite || 100)}%` }}
+              />
+            </div>
           </div>
         </div>
 
@@ -764,33 +770,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         <div
           id="kpi-stock-disponible"
           onClick={() => onNavigateTab('materiels')}
-          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative"
+          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative min-w-0 flex flex-col justify-between"
         >
-          <div className="flex items-center justify-between">
-            <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <HardDrive className="w-5 h-5" />
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
+                <HardDrive className="w-5 h-5" />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-blue-100 whitespace-nowrap">
+                  Prêt affectation
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveExplanation(EXPLANATIONS.kpi_stock);
+                  }}
+                  className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
+                  title="Cliquer pour voir le rôle et le calcul de cet indicateur"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-100">
-                Prêt affectation
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveExplanation(EXPLANATIONS.kpi_stock);
-                }}
-                className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
-                title="Cliquer pour voir le rôle et le calcul de cet indicateur"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Stock & Réserve IT</p>
+            <div className="flex items-baseline gap-2 mt-0.5 min-w-0">
+              <span className="text-2xl font-black text-gray-900">{metrics.materielsEnStock}</span>
+              <span className="text-xs text-gray-500 font-medium truncate">équipements dispo</span>
             </div>
-          </div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3">Stock & Réserve IT</p>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-2xl font-black text-gray-900">{metrics.materielsEnStock}</span>
-            <span className="text-xs text-gray-500 font-medium">équipements dispo</span>
           </div>
           <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
             <span className="text-gray-500">Garanties actives</span>
@@ -798,45 +806,47 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
           </div>
         </div>
 
-        {/* KPI 4: Incidents IT & Support Utilisateurs (Titre clair et explications) */}
+        {/* KPI 4: Incidents IT & Support Utilisateurs */}
         <div
           id="kpi-incidents-support"
           onClick={() => onNavigateTab('reclamations')}
-          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative"
+          className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative min-w-0 flex flex-col justify-between"
         >
-          <div className="flex items-center justify-between">
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform ${
-              metrics.ticketsUrgentsOuverts > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
-            }`}>
-              <LifeBuoy className="w-5 h-5" />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${
-                metrics.ticketsUrgentsOuverts > 0 ? 'text-red-700 bg-red-50 border border-red-100' : 'text-emerald-700 bg-emerald-50'
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shrink-0 ${
+                metrics.ticketsUrgentsOuverts > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
               }`}>
-                Délai moyen: {metrics.mttrFormatte || '4.2h'}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveExplanation(EXPLANATIONS.kpi_incidents);
-                }}
-                className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
-                title="Cliquer pour voir le rôle et le calcul de cet indicateur"
-              >
-                <HelpCircle className="w-3.5 h-3.5" />
-              </button>
+                <LifeBuoy className="w-5 h-5" />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className={`text-[11px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg whitespace-nowrap ${
+                  metrics.ticketsUrgentsOuverts > 0 ? 'text-red-700 bg-red-50 border border-red-100' : 'text-emerald-700 bg-emerald-50'
+                }`}>
+                  Délai SLA: {metrics.mttrFormatte || '4.2h'}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveExplanation(EXPLANATIONS.kpi_incidents);
+                  }}
+                  className="w-6 h-6 rounded-lg bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 flex items-center justify-center transition border border-transparent hover:border-blue-200"
+                  title="Cliquer pour voir le rôle et le calcul de cet indicateur"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3">Incidents IT & Support Utilisateurs</p>
-          <div className="flex items-baseline gap-2 mt-0.5">
-            <span className={`text-2xl font-black ${metrics.ticketsUrgentsOuverts > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-              {metrics.reclamationsOuvertes || 0}
-            </span>
-            <span className="text-xs text-gray-500 font-medium">
-              tickets en cours ({metrics.ticketsUrgentsOuverts} urgents)
-            </span>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Incidents & Support IT</p>
+            <div className="flex flex-wrap items-baseline gap-1.5 mt-0.5 min-w-0">
+              <span className={`text-2xl font-black ${metrics.ticketsUrgentsOuverts > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                {metrics.reclamationsOuvertes || 0}
+              </span>
+              <span className="text-xs text-gray-500 font-medium truncate">
+                tickets ({metrics.ticketsUrgentsOuverts} urgents)
+              </span>
+            </div>
           </div>
           <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
             <span className="text-gray-500">Taux de résolution</span>
@@ -848,9 +858,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       {/* ========================================================================= */}
       {/* SECTION B: 2 GRAPHIQUES CLÉS (EMPLACEMENTS vs FACTURES CIRCULAIRES) */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Graphique 1: Histogramme Matériels par Emplacement & Personnel */}
-        <div className="lg:col-span-7 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-7 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-100 gap-2 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -881,7 +891,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </button>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={emplacementsStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -906,7 +916,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         </div>
 
         {/* Graphique 2: Circulaire Factures avec infobulles & Trésorerie */}
-        <div className="lg:col-span-5 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-5 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -933,9 +943,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-4 min-w-0">
             {/* Donut Chart */}
-            <div className="sm:col-span-6 h-52 relative flex items-center justify-center">
+            <div className="h-52 relative flex items-center justify-center min-w-0 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip
@@ -968,19 +978,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </div>
 
             {/* Legend & Amounts */}
-            <div className="sm:col-span-6 space-y-2 text-xs">
+            <div className="space-y-2 text-xs min-w-0 w-full">
               {facturesStats.parStatut.map((item) => (
-                <div key={item.statut} className="p-2 rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-gray-800 font-bold">{item.statut}</span>
+                <div key={item.statut} className="p-2 rounded-xl bg-gray-50 border border-gray-100 min-w-0">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-gray-800 font-bold truncate">{item.statut}</span>
                     </div>
-                    <span className="font-mono text-gray-500 font-semibold text-[11px]">{item.pourcentage}</span>
+                    <span className="font-mono text-gray-500 font-semibold text-[11px] shrink-0">{item.pourcentage}</span>
                   </div>
-                  <div className="flex items-center justify-between mt-1 text-[11px] text-gray-500">
-                    <span>{item.count} facture(s)</span>
-                    <span className="font-bold text-gray-900 font-mono">{item.montantFormatte}</span>
+                  <div className="flex items-center justify-between mt-1 text-[11px] text-gray-500 gap-1">
+                    <span className="truncate">{item.count} fac.</span>
+                    <span className="font-bold text-gray-900 font-mono shrink-0">{item.montantFormatte}</span>
                   </div>
                 </div>
               ))}
@@ -992,9 +1002,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       {/* ========================================================================= */}
       {/* SECTION C: FOURNISSEURS vs PANNES & RÉPARTITIONS GROUPES / PRIORITÉS */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Graphique 3: Fournisseurs vs Matériels en Panne (Taux de Sinistralité) */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-6 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1020,7 +1030,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </span>
           </div>
 
-          <div className="h-60 w-full">
+          <div className="h-60 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={fournisseursPannes.slice(0, 6)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -1047,7 +1057,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         </div>
 
         {/* Graphique 4: Réclamations par Niveau de Priorité (Charge DSI) */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-6 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1076,7 +1086,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </button>
           </div>
 
-          <div className="h-60 w-full">
+          <div className="h-60 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={prioritesReclamations} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -1104,9 +1114,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       {/* ========================================================================= */}
       {/* SECTION D: GROUPES DE MATÉRIEL (DONUT) & ALERTES EN DIRECT */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
         {/* Donut Chart Catégories Matériel */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-6 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1135,8 +1145,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-12 items-center gap-4">
-            <div className="sm:col-span-6 h-52 relative flex items-center justify-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 items-center gap-4 min-w-0">
+            <div className="h-52 relative flex items-center justify-center min-w-0 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Tooltip
@@ -1165,7 +1175,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
               </div>
             </div>
 
-            <div className="sm:col-span-6 space-y-1.5 text-xs max-h-52 overflow-y-auto pr-1">
+            <div className="space-y-1.5 text-xs max-h-52 overflow-y-auto pr-1 min-w-0 w-full">
               {pieData.map((item) => (
                 <div key={item.name} className="flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-gray-50">
                   <div className="flex items-center gap-2 truncate">
@@ -1183,7 +1193,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         </div>
 
         {/* Dernières Réclamations Actives (filtrées statut !== 'Résolue') */}
-        <div className="lg:col-span-6 bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
+        <div className="xl:col-span-6 bg-white p-5 sm:p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between min-w-0">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1263,7 +1273,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       {/* ========================================================================= */}
       {/* SECTION E: 3 COLONNES RÉCENTES (MATÉRIELS, FACTURES & ALERTES DSI) */}
       {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {/* Matériels Récents */}
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-2xs flex flex-col justify-between">
           <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
