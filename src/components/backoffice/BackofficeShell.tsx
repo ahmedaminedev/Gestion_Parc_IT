@@ -106,14 +106,14 @@ export const BackofficeShell: React.FC<BackofficeShellProps> = ({ onLogout }) =>
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-auto">
         <TopHeader
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           onNavigateTab={(tab) => setActiveBackofficeTab(tab)}
           onLogout={onLogout}
         />
 
-        <main className="flex-1 min-w-0 w-full overflow-x-hidden">
+        <main className="flex-1 min-w-0 w-full overflow-x-auto overflow-y-auto">
           <Suspense fallback={<PageFallback />}>
             {activeBackofficeTab === 'dashboard' && (
               <DashboardPage onNavigateTab={(tab) => setActiveBackofficeTab(tab)} />
