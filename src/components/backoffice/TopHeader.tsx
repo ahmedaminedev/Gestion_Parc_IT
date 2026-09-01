@@ -408,11 +408,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             className="flex items-center gap-2.5 p-1 sm:p-1.5 sm:pr-3 rounded-full hover:bg-gray-100 transition-colors cursor-pointer border border-transparent hover:border-gray-200"
             id="user-menu-btn"
           >
-            <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-2xs">
-              {user?.photo ? (
-                <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
-              ) : (
-                user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'
+            <div className="w-9 h-9 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-2xs relative">
+              <span className="select-none">{user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'}</span>
+              {user?.photo && (
+                <img 
+                  src={user.photo} 
+                  alt={user.beneficiaire} 
+                  className="absolute inset-0 w-full h-full object-cover" 
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
               )}
             </div>
             <div className="text-left hidden sm:block">
@@ -425,11 +431,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           {showUserDropdown && (
             <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
               <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-xs">
-                  {user?.photo ? (
-                    <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
-                  ) : (
-                    user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'
+                <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-xs relative">
+                  <span className="select-none">{user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'}</span>
+                  {user?.photo && (
+                    <img 
+                      src={user.photo} 
+                      alt={user.beneficiaire} 
+                      className="absolute inset-0 w-full h-full object-cover" 
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
                   )}
                 </div>
                 <div className="overflow-hidden min-w-0">

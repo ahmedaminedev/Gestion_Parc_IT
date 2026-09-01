@@ -42,13 +42,14 @@ export function getRefreshCookieOptions(maxAgeMs: number, req?: Request) {
   };
 }
 
-export function generateTokens(user: { id: string; email: string; id_Role?: string; role: string; beneficiaire: string; accesApp?: string; isSuperAdmin?: boolean }) {
+export function generateTokens(user: { id: string; email: string; id_Role?: string; role: string; beneficiaire: string; accesApp?: string; isSuperAdmin?: boolean; photo?: string }) {
   const payload = {
     id: user.id,
     email: user.email,
     id_Role: user.id_Role,
     role: user.role,
     beneficiaire: user.beneficiaire,
+    photo: user.photo || '',
     accesApp: user.accesApp || (user.role === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : 'ESPACE_RECLAMATIONS'),
     isSuperAdmin: !!user.isSuperAdmin,
   };
@@ -896,6 +897,7 @@ export async function login(req: Request, res: Response) {
       id_Role,
       role: roleName,
       beneficiaire: user.beneficiaire,
+      photo: user.photo || '',
       accesApp: resolvedAccesApp,
       isSuperAdmin: !!user.isSuperAdmin,
     });
@@ -1008,6 +1010,7 @@ export async function refreshToken(req: Request, res: Response) {
         id_Role,
         role: roleName,
         beneficiaire: decoded.beneficiaire,
+        photo: decoded.photo || '',
         accesApp: resolvedAccesApp,
         isSuperAdmin: !!decoded.isSuperAdmin,
       });
@@ -1124,6 +1127,7 @@ export async function refreshToken(req: Request, res: Response) {
       id_Role,
       role: roleName,
       beneficiaire: user.beneficiaire,
+      photo: user.photo || '',
       accesApp: resolvedAccesApp,
       isSuperAdmin: !!user.isSuperAdmin,
     });

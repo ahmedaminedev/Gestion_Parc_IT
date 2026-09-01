@@ -169,11 +169,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           className="mt-2 pt-2.5 border-t border-gray-800/60 flex items-center gap-3 bg-gray-900/60 p-2 rounded-2xl border border-gray-800 cursor-pointer hover:bg-gray-800/80 hover:border-gray-700 transition-colors"
           title="Accéder à mon profil et photo de profil"
         >
-          <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 flex items-center justify-center text-xs font-black border border-red-500/30 shrink-0 overflow-hidden">
-            {user?.photo ? (
-              <img src={user.photo} alt={user.beneficiaire} className="w-full h-full object-cover" />
-            ) : (
-              getInitials(user?.beneficiaire)
+          <div className="w-8 h-8 rounded-xl bg-red-600/20 text-red-400 flex items-center justify-center text-xs font-black border border-red-500/30 shrink-0 overflow-hidden relative">
+            <span className="select-none">{getInitials(user?.beneficiaire)}</span>
+            {user?.photo && (
+              <img 
+                src={user.photo} 
+                alt={user.beneficiaire} 
+                className="absolute inset-0 w-full h-full object-cover" 
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
             )}
           </div>
           <div className="overflow-hidden min-w-0">

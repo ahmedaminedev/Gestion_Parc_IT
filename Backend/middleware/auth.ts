@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     email: string;
     role: string;
     beneficiaire: string;
+    photo?: string;
     isSuperAdmin?: boolean;
   };
 }
@@ -26,6 +27,7 @@ export function verifyToken(req: AuthRequest, res: Response, next: NextFunction)
       email: string;
       role: string;
       beneficiaire: string;
+      photo?: string;
       isSuperAdmin?: boolean;
     };
     req.user = decoded;
