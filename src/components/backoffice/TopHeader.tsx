@@ -8,8 +8,7 @@ import {
   AlertTriangle,
   ShieldAlert,
   LogOut,
-  RefreshCw,
-  KeyRound,
+  User,
   MessageSquare
 } from 'lucide-react';
 import { authService, AuthUser } from '../../services/authService';
@@ -429,9 +428,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
 
           {showUserDropdown && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-2xl border border-gray-100/80 py-2 z-50 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-sm">
               <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-100 text-red-700 flex items-center justify-center font-bold text-xs border border-red-200 uppercase overflow-hidden shrink-0 shadow-xs relative">
+                <div className="w-11 h-11 rounded-full bg-linear-to-br from-red-600 to-rose-700 text-white flex items-center justify-center font-bold text-sm uppercase overflow-hidden shrink-0 shadow-sm relative ring-2 ring-red-100">
                   <span className="select-none">{user?.beneficiaire ? user.beneficiaire.slice(0, 2) : 'IT'}</span>
                   {user?.photo && (
                     <img 
@@ -444,18 +443,22 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                     />
                   )}
                 </div>
-                <div className="overflow-hidden min-w-0">
-                  <p className="text-xs font-bold text-gray-800 truncate">{user?.beneficiaire || ''}</p>
-                  <p className="text-[10px] text-gray-500 truncate">{user?.email || ''}</p>
+                <div className="overflow-hidden min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-gray-900 truncate leading-snug">{user?.beneficiaire || 'Utilisateur'}</p>
+                  <p className="text-xs text-gray-500 truncate">{user?.email || ''}</p>
                 </div>
               </div>
-              <div className="px-4 py-1.5 text-[10px] text-emerald-700 font-semibold bg-emerald-50 my-1.5 mx-2 rounded-lg flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Session Active (MongoDB)</span>
-                </span>
-                <span className="text-[9px] text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">
-                  {user?.role || ''}
+
+              <div className="px-4 py-2 mx-2 my-2 bg-emerald-50/80 border border-emerald-100/80 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span className="text-xs font-medium text-emerald-800">Session active</span>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-white/90 px-2 py-0.5 rounded-md shadow-2xs border border-emerald-200/50">
+                  {user?.role || 'Utilisateur'}
                 </span>
               </div>
 
@@ -466,33 +469,28 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                       onNavigateTab('profile');
                       setShowUserDropdown(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-2 font-medium transition-colors cursor-pointer"
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer group"
                   >
-                    <KeyRound className="w-3.5 h-3.5 text-red-600" />
-                    <span>Mon Profil & Photo</span>
+                    <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center group-hover:bg-red-100 transition-colors">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <span>Mon Profil & Paramètres</span>
                   </button>
                 )}
-
-                <button
-                  onClick={async () => {
-                    await authService.prolongSession();
-                    setShowUserDropdown(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 rounded-lg flex items-center gap-2 font-medium transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Renouveler Token (Refresh)</span>
-                </button>
               </div>
 
               <div className="border-t border-gray-100 my-1"></div>
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 font-medium cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Se déconnecter</span>
-              </button>
+              <div className="px-2 pt-0.5">
+                <button
+                  onClick={handleLogout}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50/80 rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                    <LogOut className="w-4 h-4" />
+                  </div>
+                  <span>Se déconnecter</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
