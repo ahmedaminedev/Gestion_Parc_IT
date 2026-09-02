@@ -1,93 +1,148 @@
-# OMODA & JAECOO — Système de Gestion de Parc Informatique & Support IT
+# 🚗 OMODA & JAECOO — Système de Gestion de Parc Informatique & Support IT
 
-Application d'entreprise full-stack dédiée à la gestion centralisée du parc matériel informatique, au suivi budgétaire et au helpdesk technique pour **OMODA & JAECOO**.
+[![CI/CD Pipeline](https://img.shields.io/badge/CI%2FCD-Passing-emerald?style=flat-square&logo=githubactions)](https://github.com)
+[![Tests Passing](https://img.shields.io/badge/Tests-482%20passed-brightgreen?style=flat-square&logo=vitest)](https://vitest.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.x-green?style=flat-square&logo=nodedotjs)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react)](https://react.dev/)
+
+Application d'entreprise **Full-Stack** dédiée à la gestion centralisée du parc matériel informatique, au suivi budgétaire, à la traçabilité des équipements et au helpdesk technique pour la filiale **OMODA & JAECOO**.
 
 ---
 
-## 🌟 Fonctionnalités Principales
+## 📚 Documentation Complète du Projet
 
-### 1. 📊 Tableau de Bord & Indicateurs DSI
-- **Suivi financier** : Calcul de la valeur globale HT du parc en service.
-- **Indicateurs de performance (KPIs)** : Taux de disponibilité opérationnelle, MTTR (*Mean Time To Resolution*).
-- **Alertes préventives** : Notifications pour garanties expirant sous 60 jours, matériels en panne et tickets urgents.
-- **Graphiques interactifs** : Répartition par groupe de matériel, score de fiabilité des fournisseurs, statut des factures.
+Pour une immersion approfondie, deux guides détaillés sont disponibles dans le dossier `/docs` :
 
-### 2. 🎫 Gestion des Réclamations & Helpdesk IT
-- **Déclaration simplifiée en 2 étapes** : Ciblage par équipement affecté ou catégorie générale, suivi du statut et priorité.
-- **Workflow DSI complet** : Assignation à un technicien référent, suivi des engagements de service (SLA) avec date d'échéance.
-- **Historique & Traçabilité** : Fil de discussion chronologique et journal d'audit complet de chaque intervention.
+- 🏗️ **[Documentation Technique & Architecture Logicielles (`docs/ARCHITECTURE_ET_TECHNIQUE.md`)](./docs/ARCHITECTURE_ET_TECHNIQUE.md)** :
+  - Technologies et stack complète (Front, Back, Sockets, Base de données).
+  - Diagramme de classes UML & Schéma des modèles de données.
+  - Détail complet de toutes les méthodes Backend (Contrôleurs, Services, Validateurs) et Frontend (Clients API, Hooks).
+  - Référence exhaustive des endpoints REST et cycle de vie des jetons JWT.
+  - Stratégie de tests unitaires et intégration continue CI/CD.
 
-### 3. 💬 Messagerie Temps Réel & Visioconférence
-- **Chat instantané (WebSockets / Socket.io)** : Échanges fluides, partage de captures d'écran, photos et fichiers joints.
-- **Assistance à distance (WebRTC)** : Appels audio/vidéo avec capture d'écran intégrée pour diagnostic rapide.
-- **Cloisonnement strict** : Les collaborateurs contactent directement le support informatique sans risque de pollution des canaux.
+- 📖 **[Guide Utilisateur, Rôles & Scénarios Métiers (`docs/GUIDE_UTILISATEUR_ET_SCENARIOS.md`)](./docs/GUIDE_UTILISATEUR_ET_SCENARIOS.md)** :
+  - Matrice des rôles (`ADMIN`, `RESPONSABLE_IT`, `UTILISATEUR`).
+  - Cartographie de chaque écran, utilité métier et actions permises.
+  - **7 Scénarios d'utilisation détaillés pas-à-pas** (Arrivée d'employé, Déclaration et résolution de panne SLA, Commande fournisseur, Déclassement de matériel, Dépannage en visioconférence WebRTC, Récupération de mot de passe par OTP, Sécurité d'inactivité de session).
 
-### 4. 💻 Gestion des Équipements & Inventaire
-- **Fiches matériels détaillées** : Numéro de série unique, code-barres, référence ERP (`ref_immo`), caractéristiques techniques.
-- **Contrôles d'intégrité métier** : Validation stricte des statuts (*En service*, *En stock*, *En réparation*, *Hors service*), prévention des doublons.
-- **Gestion des départs** : Blocage de la désactivation d'un utilisateur tant que du matériel lui est attribué.
+---
 
-### 5. 💰 Factures, Fournisseurs & Emplacements
-- **Gestion budgétaire** : Liaison directe matériel-facture-fournisseur avec suivi des montants HT/TTC et dates d'achat.
-- **Gestion multi-sites** : Cartographie des bâtiments, étages et bureaux d'affectation.
+## 🌟 Modules & Fonctionnalités Clés
+
+### 1. 📊 Tableau de Bord & Indicateurs DSI (KPIs)
+- **Valorisation du parc en temps réel** : Calcul automatique de la valeur active en Dinars Tunisiens (TND).
+- **Indicateurs de santé** : Taux de disponibilité opérationnelle, équipements en panne, suivi du MTTR (*Mean Time To Resolution*).
+- **Alertes préventives** : Surveillance des garanties constructeur expirant sous 60 jours et des tickets urgents.
+- **Graphiques dynamiques** : Répartition par type de machine, localisation et statut.
+
+### 2. 💻 Inventaire des Équipements & Cartographie Matérielle
+- **Fiches matériels exhaustives** : Numéro de série unique, référence, marque, modèle, adresses IP / MAC, configuration (RAM, CPU, Stockage).
+- **Cycle de vie complet** : États d'équipements normés (*En service, En stock, En panne, Hors service*).
+- **Affectation nominative & géographique** : Attribution aux collaborateurs, rattachement aux sites, étages et bureaux.
+- **Export standardisé** : Génération instantanée de l'inventaire complet au format CSV.
+
+### 3. 🎫 Helpdesk & Gestion des Réclamations (Workflow SLA)
+- **Déclaration simplifiée** : Sélection de l'équipement défaillant et qualification de la priorité (*Basse, Moyenne, Haute, Urgente*).
+- **Cycle de résolution** : Prise en charge $\rightarrow$ Assignation technicien $\rightarrow$ En cours $\rightarrow$ Clôture avec note d'intervention.
+- **Traçabilité totale** : Journal d'audit chronologique horodaté et notifications email automatiques.
+
+### 4. 💬 Messagerie Temps Réel & Visioconférence WebRTC
+- **Communication instantanée (Socket.io)** : Salons de discussion privés et de groupe avec présence en direct.
+- **Mémos vocaux intégrés** : Enregistrement et lecture de messages audio directement dans le navigateur.
+- **Assistance à distance (WebRTC)** : Appels vidéo et audio haute définition pour diagnostic immédiat.
+- **Partage multimédia** : Transfert de documents, captures d'écran et photos webcam.
+
+### 5. 💰 Factures, Fournisseurs & Finances
+- **Suivi des investissements** : Enregistrement des factures d'achat, montants HT/TVA/TTC, dates d'acquisition et durées de garantie.
+- **Répertoire Fournisseurs** : Base de données des prestataires IT avec contacts et contrats de maintenance.
+
+### 6. 👥 Administration & Sécurité des Accès
+- **Contrôle d'accès basé sur les rôles (RBAC)** : Cloisonnement strict des privilèges.
+- **Cycle des jetons JWT (Dual-Token)** : Access Token (15 min) + Refresh Token (7 jours) avec révocation en base.
+- **Protection par code OTP** : Récupération de mot de passe sécurisée par email transactionnel.
+- **Détection d'inactivité** : Verrouillage automatique avec modale d'avertissement.
 
 ---
 
 ## 🛠️ Stack Technologique
 
-- **Frontend** : React 19, TypeScript, Tailwind CSS, Lucide Icons, Recharts, Framer Motion
-- **Backend** : Node.js, Express, Socket.io (Temps réel), WebRTC (Visio & Audio)
-- **Base de Données & ORM** : MongoDB / Mongoose (avec fallback MongoDB Memory Server pour exécution instantanée)
-- **Sécurité & Authentification** : JWT (JSON Web Tokens), Cookies HTTP-only, Hachage BCrypt, RBAC (*Role-Based Access Control*)
-- **Notifications & Mail** : Nodemailer (Service SMTP sécurisé avec vérification en direct et codes OTP)
+| Couche | Technologies Utilisées |
+| :--- | :--- |
+| **Frontend** | React 19, TypeScript, Tailwind CSS 4, Motion, Lucide Icons, Recharts |
+| **Backend** | Node.js 22 LTS, Express.js, Socket.io 4 (Temps réel), WebRTC |
+| **Base de Données** | MongoDB 7 / ODM Mongoose (avec fallback MongoDB Memory Server) |
+| **Sécurité & Auth** | JSON Web Tokens (`jsonwebtoken`), `bcryptjs` (Salage 10 rounds), RBAC |
+| **Emails & Uploads** | Nodemailer (Transport SMTP), Multer, Stockage physique d'avatars PNG |
+| **Tests & Qualité** | Vitest 2+, Testing Library, TypeScript Strict, SonarCloud |
 
 ---
 
-## 🚀 Installation & Lancement en Local
+## 🚀 Installation & Démarrage Rapide
 
 ### Prérequis
-- **Node.js** (version 18 ou supérieure)
-- **npm** (ou yarn / bun)
+- **Node.js** (version 20+ ou 22 LTS recommandée)
+- **npm** (ou bun / yarn)
 
-### 1. Cloner le dépôt et installer les dépendances
+### 1. Installation des dépendances
 ```bash
-# Installation des dépendances racine et client
 npm install
 ```
 
-### 2. Configuration des Variables d'Environnement
-Créez un fichier `.env` à la racine ou dans le dossier `Backend` selon vos besoins (se référer aux modèles `.env.example`).
-
+### 2. Configuration de l'environnement
+Créez un fichier `.env` à la racine en vous basant sur le modèle fourni :
 ```bash
-# Exemple de configuration standard
-PORT=3000
-MONGODB_URI=mongodb://localhost:27017/Gestion_Parc_IT_2
-JWT_SECRET=votre_cle_secrete_jwt
+cp .env.example .env
 ```
 
-### 3. Lancer l'Application en Mode Développement
+### 3. Lancement en mode Développement
 ```bash
 npm run dev
 ```
+L'application démarre automatiquement sur **`http://localhost:3000`** avec rechargement à chaud (Vite + API Express).
 
-L'application sera accessible sur : **`http://localhost:3000`**
+---
 
-### 4. Build de Production
+## 🧪 Tests Automatisés & Intégration Continue (CI/CD)
+
+Le projet intègre une suite exhaustive de **tests unitaires, d'intégration et de composants** :
+
 ```bash
+# Lancer l'intégralité de la suite de tests
+npm run test:run
+
+# Lancer les tests en mode interactif / surveillance
+npm run test
+
+# Vérifier les types TypeScript sans compilation
+npm run lint
+
+# Compiler le livrable de production
 npm run build
-npm start
 ```
 
----
-
-## 👥 Rôles & Comptes de Démonstration
-
-| Identifiant | Rôle | Périmètre d'Accès |
-| :--- | :--- | :--- |
-| `admin@omoda-jaecoo.tn` | **Responsable IT / DSI** | Accès complet : Dashboard, Matériels, Utilisateurs, Factures, Fournisseurs, Helpdesk, Paramètres |
-| `employe@omoda-jaecoo.tn` | **Collaborateur** | Espace Collaborateur : Mes Équipements, Déclaration d'Incident en 2 clics, Support direct |
+### Pipelines CI/CD Inclus
+- **GitHub Actions (`.github/workflows/ci-tests.yml`)** : Exécute automatiquement à chaque push/PR les étapes `npm ci`, `test:run`, `lint` et `build`.
+- **Jenkins (`Jenkinsfile`)** : Pipeline déclaratif multi-étapes prêt pour les serveurs d'intégration continue d'entreprise.
 
 ---
 
-## 📄 Licence
-Propriété exclusive de **OMODA & JAECOO Tunisie**. Tous droits réservés.
+## 👥 Structure des Dossiers du Projet
+
+```text
+Gestion_Parc_IT/
+├── 📁 .github/workflows/    # Pipelines d'intégration continue GitHub Actions
+├── 📁 Backend/              # Serveur API Express, Contrôleurs, Modèles Mongoose, Services
+├── 📁 docs/                 # Documentation technique approfondie et guide scénarios
+│   ├── ARCHITECTURE_ET_TECHNIQUE.md
+│   └── GUIDE_UTILISATEUR_ET_SCENARIOS.md
+├── 📁 public/               # Actifs statiques et images
+├── 📁 src/                  # Code source Client React 19 (Pages, Composants, Services, Tests)
+│   ├── 📁 components/       # Vues Backoffice, Modales, Header, Sidebar, Chat
+│   ├── 📁 services/         # Clients API REST, Socket.io et Authentification
+│   ├── 📁 test/             # 482+ Tests unitaires et d'intégration Vitest
+│   └── 📁 types/            # Définitions des interfaces TypeScript
+├── Jenkinsfile              # Pipeline CI/CD Jenkins
+├── README.md                # Présentation générale du projet
+└── package.json             # Dépendances et scripts de build
+```
