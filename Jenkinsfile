@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    tools {
+        nodejs 'NodeJS-22'
+    }
+
     environment {
         CI = 'true'
         NODE_ENV = 'production'
@@ -20,6 +24,8 @@ pipeline {
         stage('Vérification Environnement Windows') {
             steps {
                 echo '=== Étape 2 : Vérification du système et de Docker ==='
+                bat 'node --version'
+                bat 'npm --version'
                 bat 'docker version'
                 bat 'docker info --format "{{.OSType}}"'
             }
@@ -80,10 +86,11 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline Jenkins terminé avec succès : Application OMODA & JAECOO déployée sur Windows Server 2025 !'
+            echo 'Pipeline Jenkins terminé avec succès : Application OMODA & JAECOO déployée sur Windows Server 2025 !'
         }
+
         failure {
-            echo '❌ Échec du Pipeline Jenkins. Affichage des derniers logs du conteneur :'
+            echo 'Échec du Pipeline Jenkins. Affichage des derniers logs du conteneur :'
             bat 'docker logs --tail 50 %CONTAINER_NAME% 2>nul || echo Impossible de recuperer les logs'
         }
     }
