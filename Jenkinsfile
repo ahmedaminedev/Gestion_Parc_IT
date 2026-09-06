@@ -7,7 +7,6 @@ pipeline {
 
     environment {
         CI = 'true'
-        NODE_ENV = 'production'
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
         IMAGE_TAG = 'latest'
         CONTAINER_NAME = 'parc-it-app'
@@ -34,9 +33,9 @@ pipeline {
         stage('Installation Dépendances & Tests') {
             steps {
                 echo '=== Étape 3 : Installation et Tests Unitaires ==='
-                bat 'call npm install --no-audit --no-fund'
-                bat 'call npm run lint'
-                bat 'call npm run test:run'
+                bat 'call npm install --include=dev --no-audit --no-fund'
+                bat 'call npx tsc --noEmit'
+                bat 'call npx vitest run'
             }
         }
 
@@ -90,8 +89,7 @@ pipeline {
         }
 
         failure {
-            echo 'Échec du Pipeline Jenkins. Affichage des derniers logs du conteneur :'
-            bat 'docker logs --tail 50 %CONTAINER_NAME% 2>nul || echo Impossible de recuperer les logs'
+            echo 'Échec du Pipeline Jenkins.'
         }
     }
 }
