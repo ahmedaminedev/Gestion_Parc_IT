@@ -1,0 +1,33 @@
+# ====================================================================
+# Docker Compose pour Windows Server 2025 (OSType: windows)
+# Application de Gestion de Parc IT & Support (OMODA & JAECOO)
+# ====================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omoda-jaecoo-parc-it:latest
+    container_name: parc-it-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MONGODB_URI=mongodb://host.docker.internal:27017/Gestion_Parc_IT_2
+      - JWT_SECRET=VotreCleSecreteJWT_Securisee_2025_ChangezMoi
+      - ACCESS_TOKEN_EXPIRY=15m
+      - REFRESH_TOKEN_SECRET=VotreCleRefreshToken_Securisee_2025_ChangezMoi
+      - REFRESH_TOKEN_EXPIRY=7d
+      - MAX_SESSION_DURATION=8h
+      - SESSION_WARNING_BEFORE_EXPIRY=5m
+      - REFRESH_BEFORE_EXPIRY=2m
+    volumes:
+      - app_uploads:C:\app\uploads
+      - app_backend_uploads:C:\app\Backend\uploads
+
+volumes:
+  app_uploads:
+  app_backend_uploads:
