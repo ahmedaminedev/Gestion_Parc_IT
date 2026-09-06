@@ -34,6 +34,7 @@ pipeline {
             steps {
                 echo '=== Étape 3 : Installation et Tests Unitaires ==='
                 bat 'call npm install --include=dev --no-audit --no-fund'
+                bat 'call npm install --no-save @rollup/rollup-win32-x64-msvc'
                 bat 'call npx tsc --noEmit'
                 bat 'call npx vitest run'
             }
