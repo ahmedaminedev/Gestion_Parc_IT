@@ -1,58 +1,57 @@
+# escape=`
 # ====================================================================
-# Dockerfile pour Windows Server 2025 (OSType: windows)
-# Application Full-Stack : React 19 + Express + Node.js (Vite 6 / esbuild)
+# Dockerfile pour Windows Server 2025
+# Base officielle Microsoft : Windows Server Core LTSC 2025
+# Node.js 22 installé directement dans le conteneur
+# Application Full-Stack : React + Vite + Express
 # ====================================================================
 
-# --------------------------------------------------------------------
-# Étape 1 : Build du Frontend React et du Backend Express
-# --------------------------------------------------------------------
-FROM node:22-windowsservercore-ltsc2022 AS builder
+FROM mcr.microsoft.com/windows/servercore:ltsc2025
 
-SHELL ["cmd", "/S", "/C"]
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
+# Version de Node.js
+ARG NODE_VERSION=22.14.0
+ENV NODE_VERSION=${NODE_VERSION}
+
+# 1. Installer Node.js 22 dans le conteneur
+RUN [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
+    $version = $env:NODE_VERSION; `
+    Write-Host "Téléchargement de Node.js v$version (Windows x64)..." ; `
+    Invoke-WebRequest -Uri "https://nodejs.org/dist/v$version/node-v$version-win-x64.zip" -OutFile "C:\node.zip" ; `
+    Write-Host "Extraction de l'archive..." ; `
+    Expand-Archive -Path "C:\node.zip" -DestinationPath "C:\" ; `
+    Rename-Item -Path "C:\node-v$version-win-x64" -NewName "C:\nodejs" ; `
+    Remove-Item -Force "C:\node.zip"
+
+# 2. Ajouter Node.js au PATH
+ENV PATH="C:\nodejs;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\"
+
+# 3. Vérifier Node.js et npm
+RUN node -v ; npm -v
+
+# 4. Répertoire de l'application
 WORKDIR C:\app
 
-# Copier les fichiers de dépendances
-COPY package.json package-lock.json* ./
+# 5. Copier package.json
+COPY package.json ./
 
-# Installer toutes les dépendances (y compris les devDependencies pour le build)
-RUN npm ci --prefer-offline --no-audit
+# 6. Installer les dépendances
+# NODE_ENV=production n'est PAS encore défini ici
+RUN npm install --no-audit --no-fund
 
-# Copier le code source complet de l'application
+# 7. Copier le reste du projet
 COPY . .
 
-# Compiler le Frontend React (Vite) et le Backend Express (esbuild -> dist/server.cjs)
+# 8. Construire l'application
 RUN npm run build
 
-# --------------------------------------------------------------------
-# Étape 2 : Image d'exécution de production (Production Runtime)
-# --------------------------------------------------------------------
-FROM node:22-windowsservercore-ltsc2022 AS runner
-
-SHELL ["cmd", "/S", "/C"]
-
-WORKDIR C:\app
-
-# Définir les variables d'environnement de production
-ENV NODE_ENV=production \
+# 9. Variables d'environnement de production
+ENV NODE_ENV=production `
     PORT=3000
 
-# Copier les descripteurs de paquets
-COPY package.json package-lock.json* ./
-
-# Installer uniquement les dépendances de production
-RUN npm ci --omit=dev --prefer-offline --no-audit
-
-# Copier les artefacts compilés depuis l'étape de build
-COPY --from=builder C:\app\dist .\dist
-COPY --from=builder C:\app\public .\public
-COPY --from=builder C:\app\metadata.json .\metadata.json
-
-# Créer les dossiers de stockage pour les téléversements (uploads)
-RUN mkdir C:\app\uploads C:\app\Backend\uploads
-
-# Exposer le port de l'application full-stack
+# 10. Port de l'application
 EXPOSE 3000
 
-# Commande de démarrage du serveur
+# 11. Démarrer l'application
 CMD ["node", "dist/server.cjs"]

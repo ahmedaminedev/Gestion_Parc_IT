@@ -1,6 +1,6 @@
 # ====================================================================
-# Docker Compose pour Windows Server 2025 (OSType: windows)
-# Application de Gestion de Parc IT & Support (OMODA & JAECOO)
+# Docker Compose pour Windows Server 2025 (Docker Windows Containers)
+# Application : OMODA & JAECOO - Gestion de Parc IT & Support
 # ====================================================================
 
 services:
@@ -16,18 +16,19 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # Connexion MongoDB :
+      # - Si MongoDB est installé sur votre Windows Server hôte : mongodb://host.docker.internal:27017/Gestion_Parc_IT_2
+      # - Si MongoDB est sur le Cloud (Atlas) : mongodb+srv://<user>:<password>@cluster.mongodb.net/Gestion_Parc_IT_2
       - MONGODB_URI=mongodb://host.docker.internal:27017/Gestion_Parc_IT_2
-      - JWT_SECRET=VotreCleSecreteJWT_Securisee_2025_ChangezMoi
-      - ACCESS_TOKEN_EXPIRY=15m
-      - REFRESH_TOKEN_SECRET=VotreCleRefreshToken_Securisee_2025_ChangezMoi
-      - REFRESH_TOKEN_EXPIRY=7d
-      - MAX_SESSION_DURATION=8h
-      - SESSION_WARNING_BEFORE_EXPIRY=5m
-      - REFRESH_BEFORE_EXPIRY=2m
+      - JWT_SECRET=Secret_Key_OMODA_JAECOO_WindowsServer_2025
+      - ACCESS_TOKEN_EXPIRY=20m
+      - REFRESH_TOKEN_SECRET=Secret_Refresh_OMODA_JAECOO_WindowsServer_2025
+      - REFRESH_TOKEN_EXPIRY=1d
+      - MAX_SESSION_DURATION=5d
+      - SESSION_WARNING_BEFORE_EXPIRY=1m
+      - REFRESH_BEFORE_EXPIRY=1m
     volumes:
       - app_uploads:C:\app\uploads
-      - app_backend_uploads:C:\app\Backend\uploads
 
 volumes:
   app_uploads:
-  app_backend_uploads:

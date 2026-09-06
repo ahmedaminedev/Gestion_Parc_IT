@@ -1,4 +1,4 @@
-# Dependances et builds locaux
+# Dépendances et builds locaux
 node_modules
 dist
 dist-ssr
@@ -8,14 +8,14 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Git et IDE
+# Git et outils
 .git
 .gitignore
 .github
 .vscode
 .idea
 
-# Tests et couvertures
+# Tests et rapports
 coverage
 .nyc_output
 playwright-report
@@ -28,13 +28,16 @@ __tests__
 *.spec.ts
 *.spec.tsx
 
-# Logs et temporaires
+# Fichiers temporaires et logs
 *.log
 tmp
 temp
 .cache
 
-# Fichiers sensibles
+# Documentation volumineuse
+docs
+
+# Fichiers d'environnement locaux (sécurité)
 .env
 .env.local
 .env.development.local
