@@ -17,11 +17,11 @@ ENV NODE_VERSION=${NODE_VERSION}
 # 1. Installer Node.js 22 dans le conteneur
 RUN [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
     $version = $env:NODE_VERSION; `
-    Write-Host "Téléchargement de Node.js v$version (Windows x64)..." ; `
-    Invoke-WebRequest -Uri "https://nodejs.org/dist/v$version/node-v$version-win-x64.zip" -OutFile "C:\node.zip" ; `
-    Write-Host "Extraction de l'archive..." ; `
-    Expand-Archive -Path "C:\node.zip" -DestinationPath "C:\" ; `
-    Rename-Item -Path "C:\node-v$version-win-x64" -NewName "C:\nodejs" ; `
+    Write-Host ("Telechargement de Node.js v{0} (Windows x64)..." -f $version); `
+    Invoke-WebRequest -Uri ("https://nodejs.org/dist/v{0}/node-v{0}-win-x64.zip" -f $version) -OutFile "C:\node.zip"; `
+    Write-Host "Extraction de archive..."; `
+    Expand-Archive -Path "C:\node.zip" -DestinationPath "C:\"; `
+    Rename-Item -Path ("C:\node-v{0}-win-x64" -f $version) -NewName "C:\nodejs"; `
     Remove-Item -Force "C:\node.zip"
 
 # 2. Ajouter Node.js au PATH
@@ -37,7 +37,6 @@ WORKDIR C:\app
 COPY package.json ./
 
 # 6. Installer les dépendances
-# NODE_ENV=production n'est PAS encore défini ici
 RUN npm install --no-audit --no-fund
 
 # 7. Copier le reste du projet
