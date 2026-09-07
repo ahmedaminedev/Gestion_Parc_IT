@@ -93,14 +93,26 @@ pipeline {
 
         stage('Vérification Santé Application') {
             steps {
-                echo '=== Étape 7 : Test de santé de l\'application ==='
+                echo '=== Étape 7 : Vérification de la santé de l\'application ==='
 
                 bat '''
                     @echo off
-
                     echo Attente du demarrage du serveur...
-
-                    powershell -Command "Start-Sleep -Seconds 12; try { $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 15; Write-Host 'Reponse de l API:'; $res | ConvertTo-Json } catch { Write-Error $_; exit 1 }"
+                    powershell -Command ^
+                      "Start-Sleep -Seconds 12; ^
+                       try { ^
+                           $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 15; ^
+                           Write-Host 'Reponse de l API:'; ^
+                           $res | ConvertTo-Json; ^
+                           if ($res.status -ne 'ok' -or $res.dbConnected -ne $true -or $res.mongooseState -ne 1) { ^
+                               Write-Error 'Health check invalide : application ou base de donnees non connectee.'; ^
+                               exit 1 ^
+                           } ^
+                           Write-Host 'Health check OK : application et MongoDB sont operationnels.' ^
+                       } catch { ^
+                           Write-Error $_; ^
+                           exit 1 ^
+                       }"
                 '''
             }
         }
