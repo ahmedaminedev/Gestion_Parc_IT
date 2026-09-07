@@ -1,6 +1,4 @@
-# Dépendances et builds locaux
-node_modules
-dist
+# Dépendances temporaires
 dist-ssr
 *.local
 npm-debug.log*

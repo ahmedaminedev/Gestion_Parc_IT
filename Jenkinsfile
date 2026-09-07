@@ -40,16 +40,23 @@ pipeline {
             }
         }
 
+        stage('Compilation Bundle de Production') {
+            steps {
+                echo '=== Étape 4 : Compilation de l\'application (Vite + Server) ==='
+                bat 'call npm run build'
+            }
+        }
+
         stage('Build Image Docker Windows') {
             steps {
-                echo '=== Étape 4 : Construction de l\'image Docker (Windows Server 2025) ==='
+                echo '=== Étape 5 : Construction de l\'image Docker (Windows Server 2025) ==='
                 bat "docker build -t %IMAGE_NAME%:%IMAGE_TAG% -t %IMAGE_NAME%:%BUILD_NUMBER% ."
             }
         }
 
         stage('Déploiement Conteneur Windows') {
             steps {
-                echo '=== Étape 5 : Déploiement du conteneur sur Windows Server ==='
+                echo '=== Étape 6 : Déploiement du conteneur sur Windows Server ==='
                 bat '''
                     @echo off
                     echo Arret et suppression de l ancien conteneur s il existe...
@@ -73,7 +80,7 @@ pipeline {
 
         stage('Vérification Santé Application') {
             steps {
-                echo '=== Étape 6 : Test de santé de l\'application ==='
+                echo '=== Étape 7 : Test de santé de l\'application ==='
                 bat '''
                     @echo off
                     echo Attente du demarrage du serveur...
