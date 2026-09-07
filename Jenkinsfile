@@ -16,6 +16,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 echo '=== Étape 1 : Récupération du code source ==='
@@ -26,6 +27,7 @@ pipeline {
         stage('Vérification Environnement Windows') {
             steps {
                 echo '=== Étape 2 : Vérification du système et de Docker ==='
+
                 bat 'node --version'
                 bat 'npm --version'
                 bat 'docker version'
@@ -49,14 +51,15 @@ pipeline {
 
         stage('Compilation Bundle de Production') {
             steps {
-                echo '=== Étape 4 : Compilation de l\'application (Vite + Server) ==='
+                echo '=== Étape 4 : Compilation de l application (Vite + Server) ==='
+
                 bat 'call npm run build'
             }
         }
 
         stage('Build Image Docker Windows') {
             steps {
-                echo '=== Étape 5 : Construction de l\'image Docker (Windows Server 2025) ==='
+                echo '=== Étape 5 : Construction de l image Docker (Windows Server 2025) ==='
 
                 bat "docker build -t %IMAGE_NAME%:%IMAGE_TAG% -t %IMAGE_NAME%:%BUILD_NUMBER% ."
             }
@@ -69,13 +72,18 @@ pipeline {
                 bat '''
                     @echo off
 
-                    echo Arret et suppression de l ancien conteneur s il existe...
+                    echo ========================================
+                    echo Arret de l ancien conteneur
+                    echo ========================================
 
                     docker stop %CONTAINER_NAME% 2>nul || echo Aucun conteneur en cours
 
                     docker rm -f %CONTAINER_NAME% 2>nul || echo Aucun conteneur a supprimer
 
-                    echo Demarrage du nouveau conteneur...
+                    echo.
+                    echo ========================================
+                    echo Demarrage du nouveau conteneur
+                    echo ========================================
 
                     docker run -d ^
                       --name %CONTAINER_NAME% ^
@@ -87,44 +95,66 @@ pipeline {
                       -e JWT_SECRET="Secret_Key_OMODA_JAECOO_WindowsServer_2025" ^
                       -v app_uploads:C:\\app\\uploads ^
                       %IMAGE_NAME%:%IMAGE_TAG%
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERREUR : impossible de demarrer le conteneur.
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo Conteneur demarre avec succes.
                 '''
             }
         }
 
         stage('Vérification Santé Application') {
             steps {
-                echo '=== Étape 7 : Vérification de la santé de l\'application ==='
+                echo '=== Étape 7 : Vérification de la santé de l application ==='
 
                 bat '''
                     @echo off
-                    echo Attente du demarrage du serveur...
-                    powershell -Command ^
-                      "Start-Sleep -Seconds 12; ^
-                       try { ^
-                           $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 15; ^
-                           Write-Host 'Reponse de l API:'; ^
-                           $res | ConvertTo-Json; ^
-                           if ($res.status -ne 'ok' -or $res.dbConnected -ne $true -or $res.mongooseState -ne 1) { ^
-                               Write-Error 'Health check invalide : application ou base de donnees non connectee.'; ^
-                               exit 1 ^
-                           } ^
-                           Write-Host 'Health check OK : application et MongoDB sont operationnels.' ^
-                       } catch { ^
-                           Write-Error $_; ^
-                           exit 1 ^
-                       }"
+
+                    echo ========================================
+                    echo Attente du demarrage du serveur
+                    echo ========================================
+
+                    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; Start-Sleep -Seconds 12; try { $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 15; Write-Host '========================================'; Write-Host '      HEALTH CHECK APPLICATION'; Write-Host '========================================'; $res | ConvertTo-Json; Write-Host '========================================'; if ($res.status -ne 'ok') { throw 'ERREUR : status != ok' }; if ($res.dbConnected -ne $true) { throw 'ERREUR : MongoDB non connecte' }; if ($res.mongooseState -ne 1) { throw 'ERREUR : Mongoose state != 1' }; Write-Host 'Health check OK : application et MongoDB sont operationnels.' } catch { Write-Error $_; exit 1 }"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ========================================
+                        echo ERREUR : HEALTH CHECK ECHOUE
+                        echo ========================================
+                        echo.
+                        echo Etat du conteneur :
+                        docker ps -a --filter "name=%CONTAINER_NAME%"
+                        echo.
+                        echo Derniers logs du conteneur :
+                        docker logs --tail 80 %CONTAINER_NAME%
+                        exit /b 1
+                    )
                 '''
             }
         }
     }
 
     post {
+
         success {
-            echo 'Pipeline Jenkins terminé avec succès : Application OMODA & JAECOO déployée sur Windows Server 2025 !'
+            echo '========================================'
+            echo 'PIPELINE TERMINE AVEC SUCCES'
+            echo '========================================'
+            echo 'Application OMODA & JAECOO déployée sur Windows Server 2025.'
+            echo 'MongoDB : connexion vérifiée.'
+            echo 'Application : health check OK.'
         }
 
         failure {
-            echo 'Échec du Pipeline Jenkins.'
+            echo '========================================'
+            echo 'ECHEC DU PIPELINE'
+            echo '========================================'
+            echo 'Le déploiement ou le health check a échoué.'
         }
     }
 }
