@@ -12,7 +12,8 @@ import { createServer as createViteServer } from 'vite';
 dotenv.config({ path: path.join(process.cwd(), 'Backend', '.env') });
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
-import { connectDB } from './Backend/config/db';
+import { connectDB, isDbConnected } from './Backend/config/db';
+import mongoose from 'mongoose';
 import { seedInitialDatabase } from './Backend/controllers/authController';
 import authRoutes from './Backend/routes/authRoutes';
 import apiRoutes from './Backend/routes/apiRoutes';
