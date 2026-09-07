@@ -84,8 +84,7 @@ pipeline {
                 bat '''
                     @echo off
                     echo Attente du demarrage du serveur...
-                    timeout /t 10 /nobreak >nul
-                    powershell -Command "try { $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 10; Write-Host 'Reponse de l API:'; $res | ConvertTo-Json } catch { Write-Error $_; exit 1 }"
+                    powershell -Command "Start-Sleep -Seconds 12; try { $res = Invoke-RestMethod -Uri 'http://localhost:3000/api/health' -TimeoutSec 15; Write-Host 'Reponse de l API:'; $res | ConvertTo-Json } catch { Write-Error $_; exit 1 }"
                 '''
             }
         }

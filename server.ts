@@ -66,6 +66,11 @@ async function startServer() {
   app.use('/uploads', express.static(backendUploadsPath));
   app.use('/uploads', express.static(rootUploadsPath));
 
+  // Health check route (MUST be placed before authenticated routes)
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', database: 'Gestion_Parc_IT_2', port: PORT });
+  });
+
   // API Routes
   app.use('/api/auth', authRoutes);
   app.use('/api/messages', messageRoutes);
@@ -81,11 +86,6 @@ async function startServer() {
       return res.status(503).json({ error: 'Service temporarily unavailable (database offline)' });
     }
     next(err);
-  });
-
-  // Health check route
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', database: 'Gestion_Parc_IT_2', port: PORT });
   });
 
   // Vite middleware in dev / static serve in production
