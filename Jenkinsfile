@@ -70,7 +70,7 @@ pipeline {
                       -p 3000:3000 ^
                       -e NODE_ENV=production ^
                       -e PORT=3000 ^
-                      -e MONGODB_URI="mongodb://host.docker.internal:27017/Gestion_Parc_IT_2" ^
+                      -e MONGODB_URI="mongodb://192.168.100.88:27017/Gestion_Parc_IT_2" ^
                       -e JWT_SECRET="Secret_Key_OMODA_JAECOO_WindowsServer_2025" ^
                       -v app_uploads:C:\\app\\uploads ^
                       %IMAGE_NAME%:%IMAGE_TAG%

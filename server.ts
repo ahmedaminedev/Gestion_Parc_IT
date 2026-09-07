@@ -68,7 +68,13 @@ async function startServer() {
 
   // Health check route (MUST be placed before authenticated routes)
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', database: 'Gestion_Parc_IT_2', port: PORT });
+    res.json({
+      status: 'ok',
+      database: 'Gestion_Parc_IT_2',
+      port: PORT,
+      dbConnected: isDbConnected(),
+      mongooseState: mongoose.connection.readyState
+    });
   });
 
   // API Routes
