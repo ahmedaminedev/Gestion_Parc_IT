@@ -12,7 +12,7 @@ pipeline {
         IMAGE_TAG = 'latest'
         CONTAINER_NAME = 'parc-it-app'
 
-        MONGODB_URI = 'mongodb://172.17.91.107:27017/Gestion_Parc_IT_2'
+        MONGODB_URI = 'mongodb://172.21.128.1:27017/Gestion_Parc_IT_2'
     }
 
     stages {
