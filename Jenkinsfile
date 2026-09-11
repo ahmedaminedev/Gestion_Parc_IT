@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -8,33 +9,26 @@ pipeline {
     environment {
         CI = 'true'
 
-        // ==============================
-        // APPLICATION
-        // ==============================
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
         IMAGE_TAG = 'latest'
         CONTAINER_NAME = 'parc-it-app'
 
-        // ==============================
-        // VM WINDOWS
-        // ==============================
+        // VM actuelle
         VM_IP = '172.17.91.144'
         VM_USER = 'Administrateur'
 
-        // Clé SSH dédiée au service Jenkins (LocalSystem)
+        // Clé SSH dédiée à Jenkins
         SSH_KEY = 'C:/Windows/System32/config/systemprofile/.ssh/jenkins_ed25519'
 
-        // ==============================
-        // MONGODB SUR LA MÊME VM
-        // ==============================
+        // Fichier known_hosts de Jenkins / LocalSystem
+        SSH_KNOWN_HOSTS = 'C:/Windows/System32/config/systemprofile/.ssh/known_hosts'
+
+        // MongoDB installé sur la même VM
         MONGODB_URI = 'mongodb://172.17.91.144:27017/Gestion_Parc_IT_2'
     }
 
     stages {
 
-        // ==========================================
-        // 1. RÉCUPÉRATION DU CODE
-        // ==========================================
         stage('Checkout') {
             steps {
                 echo '=== Étape 1 : Récupération du code source ==='
@@ -42,9 +36,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 2. VÉRIFICATION ENVIRONNEMENT
-        // ==========================================
         stage('Vérification Environnement') {
             steps {
                 echo '=== Étape 2 : Vérification Node + Docker ==='
@@ -56,9 +47,33 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 3. TEST CONNEXION SSH VERS LA VM
-        // ==========================================
+        stage('Diagnostic SSH') {
+            steps {
+                echo '=== Diagnostic SSH Jenkins ==='
+
+                bat '''
+                    echo === COMPTE WINDOWS UTILISÉ PAR JENKINS ===
+                    whoami
+
+                    echo.
+                    echo === DOSSIER SSH ===
+                    icacls "C:\\Windows\\System32\\config\\systemprofile\\.ssh"
+
+                    echo.
+                    echo === CLE SSH ===
+                    icacls "C:\\Windows\\System32\\config\\systemprofile\\.ssh\\jenkins_ed25519"
+
+                    echo.
+                    echo === KNOWN HOSTS ===
+                    if exist "C:\\Windows\\System32\\config\\systemprofile\\.ssh\\known_hosts" (
+                        icacls "C:\\Windows\\System32\\config\\systemprofile\\.ssh\\known_hosts"
+                    ) else (
+                        echo known_hosts n'existe pas encore
+                    )
+                '''
+            }
+        }
+
         stage('Test SSH VM') {
             steps {
                 echo '=== Étape 3 : Test SSH Jenkins -> VM ==='
@@ -67,15 +82,13 @@ pipeline {
                     ssh ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
+                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
                         %VM_USER%@%VM_IP% "hostname"
                 '''
             }
         }
 
-        // ==========================================
-        // 4. INSTALLATION + TESTS
-        // ==========================================
         stage('Installation Dépendances & Tests') {
             steps {
                 echo '=== Étape 4 : Installation des dépendances et tests ==='
@@ -90,9 +103,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 5. BUILD PRODUCTION
-        // ==========================================
         stage('Compilation Production') {
             steps {
                 echo '=== Étape 5 : Build de l’application ==='
@@ -101,9 +111,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 6. BUILD IMAGE DOCKER
-        // ==========================================
         stage('Build Image Docker') {
             steps {
                 echo '=== Étape 6 : Construction de l’image Docker ==='
@@ -112,9 +119,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 7. SAUVEGARDE IMAGE DOCKER
-        // ==========================================
         stage('Sauvegarde de l’image') {
             steps {
                 echo '=== Étape 7 : Sauvegarde de l’image Docker en .tar ==='
@@ -123,9 +127,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 8. ENVOI IMAGE VERS VM
-        // ==========================================
         stage('Envoi vers la VM') {
             steps {
                 echo '=== Étape 8 : Envoi de l’image Docker vers la VM ==='
@@ -134,6 +135,7 @@ pipeline {
                     scp ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
+                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
                         "%IMAGE_NAME%.tar" ^
                         %VM_USER%@%VM_IP%:C:/Users/Administrateur/
@@ -141,9 +143,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 9. DÉPLOIEMENT SUR VM
-        // ==========================================
         stage('Déploiement sur la VM') {
             steps {
                 echo '=== Étape 9 : Déploiement Docker sur la VM ==='
@@ -152,6 +151,7 @@ pipeline {
                     ssh ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
+                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
                         %VM_USER%@%VM_IP% ^
                         "docker load -i C:\\Users\\Administrateur\\%IMAGE_NAME%.tar && docker stop %CONTAINER_NAME% 2>nul & docker rm -f %CONTAINER_NAME% 2>nul & docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=Secret_Key_OMODA_JAECOO_WindowsServer_2025 -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
@@ -159,9 +159,6 @@ pipeline {
             }
         }
 
-        // ==========================================
-        // 10. VÉRIFICATION DU CONTENEUR
-        // ==========================================
         stage('Vérification Déploiement') {
             steps {
                 echo '=== Étape 10 : Vérification du conteneur sur la VM ==='
@@ -170,6 +167,7 @@ pipeline {
                     ssh ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
+                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
                         %VM_USER%@%VM_IP% ^
                         "docker ps --filter name=%CONTAINER_NAME%"
@@ -178,9 +176,6 @@ pipeline {
         }
     }
 
-    // ==========================================
-    // POST BUILD
-    // ==========================================
     post {
 
         success {
@@ -203,3 +198,4 @@ pipeline {
         }
     }
 }
+```
