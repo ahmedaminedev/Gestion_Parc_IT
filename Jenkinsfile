@@ -93,7 +93,7 @@ pipeline {
                 bat '''
                     echo.
                     echo ================================================
-                    echo COMPTE WINDOWS UTILISÉ PAR JENKINS
+                    echo COMPTE WINDOWS UTILISE PAR JENKINS
                     echo ================================================
                     whoami
 
@@ -102,10 +102,10 @@ pipeline {
                     echo CLE SSH JENKINS
                     echo ================================================
                     if exist "%SSH_KEY%" (
-                        echo La clé SSH existe.
+                        echo La cle SSH existe.
                         icacls "%SSH_KEY%"
                     ) else (
-                        echo ERREUR : la clé SSH n'existe pas :
+                        echo ERREUR : la cle SSH n existe pas :
                         echo %SSH_KEY%
                         exit /b 1
                     )
@@ -115,9 +115,11 @@ pipeline {
                     echo CLE PUBLIQUE
                     echo ================================================
                     if exist "%SSH_KEY%.pub" (
+                        echo La cle publique existe.
                         type "%SSH_KEY%.pub"
                     ) else (
-                        echo Aucune clé publique .pub trouvée.
+                        echo INFO : aucune cle publique .pub.
+                        echo Ce n est pas bloquant pour SSH.
                     )
 
                     echo.
@@ -128,9 +130,16 @@ pipeline {
                         echo known_hosts existe.
                         icacls "%SSH_KNOWN_HOSTS%"
                     ) else (
-                        echo known_hosts n'existe pas encore.
-                        echo StrictHostKeyChecking=no sera utilisé.
+                        echo INFO : known_hosts n existe pas encore.
+                        echo StrictHostKeyChecking=no sera utilise.
                     )
+
+                    echo.
+                    echo ================================================
+                    echo DIAGNOSTIC TERMINE
+                    echo ================================================
+
+                    exit /b 0
                 '''
             }
         }
