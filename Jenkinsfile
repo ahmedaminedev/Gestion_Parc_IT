@@ -5,6 +5,7 @@ pipeline {
     options {
         skipDefaultCheckout(true)
         timestamps()
+        disableConcurrentBuilds()
     }
 
     tools {
@@ -13,12 +14,9 @@ pipeline {
 
     environment {
 
-        CI = 'true'
-
         // =========================================================
         // APPLICATION
         // =========================================================
-
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
         IMAGE_TAG = 'latest'
         CONTAINER_NAME = 'parc-it-app'
@@ -26,23 +24,37 @@ pipeline {
         // =========================================================
         // VM WINDOWS SERVER
         // =========================================================
-
         VM_IP = '172.17.91.144'
         VM_USER = 'Administrateur'
 
         // =========================================================
-        // SSH JENKINS
+        // SSH
+        // Jenkins fonctionne sous LocalSystem
+        // Cette clé a été testée avec succès sous SYSTEM
         // =========================================================
+        SSH_KEY = 'C:/Windows/System32/config/systemprofile/.ssh/jenkins_system_ed25519'
 
-        SSH_KEY = 'C:/ProgramData/Jenkins/.ssh/jenkins_ed25519'
-        SSH_KNOWN_HOSTS = 'C:/ProgramData/Jenkins/.ssh/known_hosts'
+        SSH_EXE = 'C:/Windows/System32/OpenSSH/ssh.exe'
+        SCP_EXE = 'C:/Windows/System32/OpenSSH/scp.exe'
 
         // =========================================================
-        // MONGODB SUR LA VM
+        // MONGODB
+        // MongoDB tourne sur la VM Windows Server
         // =========================================================
-
         MONGODB_URI = 'mongodb://172.17.91.144:27017/Gestion_Parc_IT_2'
+
+        // =========================================================
+        // JWT
+        // TODO : déplacer plus tard dans Jenkins Credentials
+        // =========================================================
+        JWT_SECRET = 'Secret_Key_OMODA_JAECOO_WindowsServer_2025'
+
+        // =========================================================
+        // DOCKER TAR
+        // =========================================================
+        DOCKER_TAR = 'omoda-jaecoo-parc-it.tar'
     }
+
 
     stages {
 
@@ -52,32 +64,63 @@ pipeline {
 
         stage('Checkout') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 1 : Récupération du code source'
-                echo '================================================'
+                echo '=============================================='
+                echo 'CHECKOUT DU PROJET'
+                echo '=============================================='
 
                 checkout scm
+
+                bat '''
+                    echo.
+                    echo ===== GIT STATUS =====
+                    git status
+
+                    echo.
+                    echo ===== GIT COMMIT =====
+                    git log -1 --oneline
+                '''
             }
         }
+
 
         // =========================================================
         // 2. ENVIRONNEMENT
         // =========================================================
 
-        stage('Vérification Environnement') {
+        stage('Verification Environnement') {
             steps {
+                echo '=============================================='
+                echo 'VERIFICATION ENVIRONNEMENT'
+                echo '=============================================='
 
-                echo '================================================'
-                echo 'Étape 2 : Vérification Node + npm + Docker'
-                echo '================================================'
+                bat '''
+                    echo.
+                    echo ===== NODE =====
+                    node --version
 
-                bat 'node --version'
-                bat 'npm --version'
-                bat 'docker version'
-                bat 'docker info --format "{{.OSType}}"'
+                    echo.
+                    echo ===== NPM =====
+                    npm --version
+
+                    echo.
+                    echo ===== DOCKER VERSION =====
+                    docker version
+
+                    echo.
+                    echo ===== DOCKER OS TYPE =====
+                    docker info --format "{{.OSType}}"
+
+                    echo.
+                    echo ===== DOCKER CONTEXT =====
+                    docker context show
+
+                    echo.
+                    echo ===== DOCKER INFO =====
+                    docker info
+                '''
             }
         }
+
 
         // =========================================================
         // 3. DIAGNOSTIC SSH
@@ -85,64 +128,31 @@ pipeline {
 
         stage('Diagnostic SSH') {
             steps {
-
-                echo '================================================'
-                echo 'Diagnostic SSH Jenkins'
-                echo '================================================'
+                echo '=============================================='
+                echo 'DIAGNOSTIC SSH'
+                echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ================================================
-                    echo COMPTE WINDOWS UTILISE PAR JENKINS
-                    echo ================================================
-                    whoami
+                    echo ===== SSH EXECUTABLE =====
+                    "%SSH_EXE%" -V
 
                     echo.
-                    echo ================================================
-                    echo CLE SSH JENKINS
-                    echo ================================================
+                    echo ===== SCP EXECUTABLE =====
+                    "%SCP_EXE%" -V
+
+                    echo.
+                    echo ===== SSH KEY =====
                     if exist "%SSH_KEY%" (
-                        echo La cle SSH existe.
-                        icacls "%SSH_KEY%"
+                        echo SSH KEY FOUND
                     ) else (
-                        echo ERREUR : la cle SSH n existe pas :
-                        echo %SSH_KEY%
+                        echo ERROR: SSH KEY NOT FOUND
                         exit /b 1
                     )
-
-                    echo.
-                    echo ================================================
-                    echo CLE PUBLIQUE
-                    echo ================================================
-                    if exist "%SSH_KEY%.pub" (
-                        echo La cle publique existe.
-                        type "%SSH_KEY%.pub"
-                    ) else (
-                        echo INFO : aucune cle publique .pub.
-                        echo Ce n est pas bloquant pour SSH.
-                    )
-
-                    echo.
-                    echo ================================================
-                    echo KNOWN HOSTS
-                    echo ================================================
-                    if exist "%SSH_KNOWN_HOSTS%" (
-                        echo known_hosts existe.
-                        icacls "%SSH_KNOWN_HOSTS%"
-                    ) else (
-                        echo INFO : known_hosts n existe pas encore.
-                        echo StrictHostKeyChecking=no sera utilise.
-                    )
-
-                    echo.
-                    echo ================================================
-                    echo DIAGNOSTIC TERMINE
-                    echo ================================================
-
-                    exit /b 0
                 '''
             }
         }
+
 
         // =========================================================
         // 4. TEST SSH VM
@@ -150,211 +160,450 @@ pipeline {
 
         stage('Test SSH VM') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 3 : Test SSH Jenkins -> VM'
-                echo '================================================'
+                echo '=============================================='
+                echo 'TEST SSH VERS LA VM'
+                echo '=============================================='
 
                 bat '''
-                    ssh ^
+                    echo.
+                    echo ===== TEST SSH =====
+
+                    "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
-                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
-                        %VM_USER%@%VM_IP% "hostname"
+                        "%VM_USER%@%VM_IP%" ^
+                        "hostname"
+
+                    if errorlevel 1 (
+                        echo ERROR: SSH VERS LA VM ECHOUE
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo SSH VM OK
                 '''
             }
         }
 
+
         // =========================================================
-        // 5. INSTALLATION + TESTS
+        // 5. INSTALLATION DEPENDANCES
         // =========================================================
 
-        stage('Installation Dépendances & Tests') {
+        stage('Installation Dependances') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 4 : Installation dépendances + tests'
-                echo '================================================'
-
-                bat 'call npm install --include=dev --no-audit --no-fund'
+                echo '=============================================='
+                echo 'INSTALLATION DES DEPENDANCES'
+                echo '=============================================='
 
                 bat '''
-                    call npm install --no-save ^
+                    echo.
+                    echo ===== INSTALLATION NPM =====
+
+                    npm install --include=dev --no-audit --no-fund
+
+                    if errorlevel 1 (
+                        echo ERROR: npm install a echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== INSTALLATION BINAIRES WINDOWS =====
+
+                    npm install --no-save ^
                         @rollup/rollup-win32-x64-msvc ^
                         lightningcss-win32-x64-msvc ^
                         @tailwindcss/oxide-win32-x64-msvc
+
+                    if errorlevel 1 (
+                        echo ERROR: installation des binaires Windows echouee
+                        exit /b 1
+                    )
                 '''
-
-                bat 'call npx tsc --noEmit'
-
-                bat 'call npx vitest run'
             }
         }
 
+
         // =========================================================
-        // 6. BUILD APPLICATION
+        // 6. TYPESCRIPT
         // =========================================================
 
-        stage('Compilation Production') {
+        stage('Verification TypeScript') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 5 : Build production'
-                echo '================================================'
-
-                bat 'call npm run build'
-            }
-        }
-
-        // =========================================================
-        // 7. BUILD IMAGE DOCKER
-        // =========================================================
-
-        stage('Build Image Docker') {
-            steps {
-
-                echo '================================================'
-                echo 'Étape 6 : Construction image Docker'
-                echo '================================================'
+                echo '=============================================='
+                echo 'VERIFICATION TYPESCRIPT'
+                echo '=============================================='
 
                 bat '''
+                    echo.
+                    echo ===== TSC =====
+
+                    npx tsc --noEmit
+
+                    if errorlevel 1 (
+                        echo ERROR: TypeScript contient des erreurs
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo TYPESCRIPT OK
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 7. TESTS
+        // =========================================================
+
+        stage('Tests') {
+            steps {
+                echo '=============================================='
+                echo 'TESTS VITEST'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== VITEST =====
+
+                    npx vitest run
+
+                    if errorlevel 1 (
+                        echo ERROR: Les tests ont echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo TESTS OK
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 8. BUILD FRONTEND
+        // =========================================================
+
+        stage('Build Application') {
+            steps {
+                echo '=============================================='
+                echo 'BUILD APPLICATION'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== BUILD =====
+
+                    npm run build
+
+                    if errorlevel 1 (
+                        echo ERROR: npm run build a echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo BUILD OK
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 9. DOCKER BUILD
+        // =========================================================
+
+        stage('Docker Build') {
+            steps {
+                echo '=============================================='
+                echo 'DOCKER BUILD'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== DOCKER OS TYPE =====
+                    docker info --format "{{.OSType}}"
+
+                    echo.
+                    echo ===== DOCKER BUILD =====
+
                     docker build ^
-                        -t %IMAGE_NAME%:%IMAGE_TAG% ^
-                        -t %IMAGE_NAME%:%BUILD_NUMBER% ^
+                        -t "%IMAGE_NAME%:%IMAGE_TAG%" ^
+                        -t "%IMAGE_NAME%:%BUILD_NUMBER%" ^
                         .
+
+                    if errorlevel 1 (
+                        echo ERROR: Docker build a echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo DOCKER BUILD OK
+
+                    echo.
+                    echo ===== IMAGES =====
+                    docker images "%IMAGE_NAME%"
                 '''
             }
         }
 
+
         // =========================================================
-        // 8. SAUVEGARDE IMAGE
+        // 10. DOCKER SAVE
         // =========================================================
 
-        stage('Sauvegarde de l’image') {
+        stage('Docker Save') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 7 : Sauvegarde image Docker'
-                echo '================================================'
+                echo '=============================================='
+                echo 'EXPORT IMAGE DOCKER'
+                echo '=============================================='
 
                 bat '''
+                    echo.
+                    echo ===== DOCKER SAVE =====
+
+                    if exist "%DOCKER_TAR%" (
+                        del /F /Q "%DOCKER_TAR%"
+                    )
+
                     docker save ^
-                        -o "%IMAGE_NAME%.tar" ^
+                        -o "%DOCKER_TAR%" ^
                         "%IMAGE_NAME%:%IMAGE_TAG%"
+
+                    if errorlevel 1 (
+                        echo ERROR: docker save a echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== TAR CREE =====
+                    dir "%DOCKER_TAR%"
                 '''
             }
         }
 
+
         // =========================================================
-        // 9. ENVOI VERS VM
+        // 11. COPIE IMAGE VERS VM
         // =========================================================
 
-        stage('Envoi vers la VM') {
+        stage('SCP Image vers VM') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 8 : Envoi image Docker vers la VM'
-                echo '================================================'
+                echo '=============================================='
+                echo 'COPIE IMAGE VERS VM'
+                echo '=============================================='
 
                 bat '''
-                    scp ^
+                    echo.
+                    echo ===== CREATION DOSSIER TEMPORAIRE VM =====
+
+                    "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
-                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
-                        "%IMAGE_NAME%.tar" ^
-                        %VM_USER%@%VM_IP%:C:/Users/Administrateur/
+                        "%VM_USER%@%VM_IP%" ^
+                        "if not exist C:\\Temp mkdir C:\\Temp"
+
+                    if errorlevel 1 (
+                        echo ERROR: impossible de creer C:\\Temp sur la VM
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== SCP IMAGE =====
+
+                    "%SCP_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%DOCKER_TAR%" ^
+                        "%VM_USER%@%VM_IP%:C:/Temp/%DOCKER_TAR%"
+
+                    if errorlevel 1 (
+                        echo ERROR: SCP de l'image echoue
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo SCP OK
                 '''
             }
         }
 
+
         // =========================================================
-        // 10. DEPLOIEMENT VM
+        // 12. DEPLOIEMENT SUR VM
         // =========================================================
 
-        stage('Déploiement sur la VM') {
+        stage('Deploy VM') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 9 : Déploiement Docker sur la VM'
-                echo '================================================'
+                echo '=============================================='
+                echo 'DEPLOIEMENT SUR VM'
+                echo '=============================================='
 
                 bat '''
-                    ssh ^
+                    echo.
+                    echo ===== DOCKER LOAD SUR VM =====
+
+                    "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
-                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
-                        %VM_USER%@%VM_IP% ^
-                        "docker load -i C:\\Users\\Administrateur\\%IMAGE_NAME%.tar && docker rm -f %CONTAINER_NAME% 2>nul & docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=Secret_Key_OMODA_JAECOO_WindowsServer_2025 -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker load -i C:\\Temp\\%DOCKER_TAR%"
+
+                    if errorlevel 1 (
+                        echo ERROR: docker load a echoue
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== SUPPRESSION ANCIEN CONTENEUR =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker rm -f %CONTAINER_NAME% 2^>nul || echo Ancien conteneur absent"
+
+
+                    echo.
+                    echo ===== CREATION DU CONTENEUR =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=%JWT_SECRET% -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
+
+                    if errorlevel 1 (
+                        echo ERROR: docker run a echoue
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== VERIFICATION CONTENEUR =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker ps --filter name=%CONTAINER_NAME%"
+
+                    if errorlevel 1 (
+                        echo ERROR: verification docker ps echouee
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== CONTENEUR DEPLOYE =====
                 '''
             }
         }
 
+
         // =========================================================
-        // 11. VERIFICATION DEPLOIEMENT
+        // 13. VERIFICATION APPLICATION
         // =========================================================
 
-        stage('Vérification Déploiement') {
+        stage('Verification Application') {
             steps {
-
-                echo '================================================'
-                echo 'Étape 10 : Vérification conteneur sur la VM'
-                echo '================================================'
+                echo '=============================================='
+                echo 'VERIFICATION APPLICATION'
+                echo '=============================================='
 
                 bat '''
-                    ssh ^
+                    echo.
+                    echo ===== CONTAINER STATUS =====
+
+                    "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
-                        -o UserKnownHostsFile="%SSH_KNOWN_HOSTS%" ^
                         -o StrictHostKeyChecking=no ^
-                        %VM_USER%@%VM_IP% ^
-                        "docker ps --filter name=%CONTAINER_NAME% --format \"table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\""
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker inspect -f \"{{.Status}}\" %CONTAINER_NAME%"
+
+                    echo.
+                    echo ===== PORT 3000 =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker port %CONTAINER_NAME%"
+
+                    echo.
+                    echo ===== DERNIERS LOGS =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker logs --tail 30 %CONTAINER_NAME%"
                 '''
             }
         }
     }
 
+
     // =============================================================
-    // POST PIPELINE
+    // POST
     // =============================================================
 
     post {
 
         success {
+            echo '''
+==============================================
+ PIPELINE TERMINE AVEC SUCCES
+==============================================
 
-            echo '================================================'
-            echo 'PIPELINE TERMINÉ AVEC SUCCÈS'
-            echo '================================================'
+Application :
+OMODA & JAECOO - Gestion de Parc Informatique
 
-            echo 'Application déployée sur la VM Windows Server.'
-            echo 'VM : 172.17.91.144'
-            echo 'Conteneur : parc-it-app'
-            echo 'Port : 3000'
+VM :
+172.17.91.144
+
+Container :
+parc-it-app
+
+Port :
+3000
+
+Image :
+omoda-jaecoo-parc-it:latest
+
+==============================================
+'''
         }
 
         failure {
+            echo '''
+==============================================
+ PIPELINE EN ECHEC
+==============================================
 
-            echo '================================================'
-            echo 'ÉCHEC DU PIPELINE'
-            echo '================================================'
+Verifier l'etape Jenkins qui a echoue.
 
-            echo 'Consulter les logs Jenkins pour identifier l étape en échec.'
+==============================================
+'''
         }
 
         always {
-
-            echo '================================================'
-            echo 'NETTOYAGE'
-            echo '================================================'
+            echo 'Nettoyage des fichiers temporaires Jenkins...'
 
             bat '''
-                if exist "%IMAGE_NAME%.tar" (
-                    del /f /q "%IMAGE_NAME%.tar"
-                    echo Fichier Docker TAR supprimé.
-                ) else (
-                    echo Aucun fichier TAR à supprimer.
+                if exist "%DOCKER_TAR%" (
+                    del /F /Q "%DOCKER_TAR%"
+                    echo TAR Docker supprime.
                 )
             '''
         }
