@@ -1,0 +1,94 @@
+# escape=`
+
+# ====================================================================
+# OMODA & JAECOO - Gestion de Parc IT
+# Runtime Windows Nano Server 2025
+#
+# L'application est déjà compilée par Jenkins :
+#   - dist/
+#   - node_modules/
+#
+# Aucune installation npm ni recompilation dans le conteneur.
+# ====================================================================
+
+FROM mcr.microsoft.com/windows/nanoserver:ltsc2025
+
+SHELL ["powershell", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# --------------------------------------------------------------------
+# 1. Version Node.js
+# --------------------------------------------------------------------
+
+ARG NODE_VERSION=22.14.0
+
+ENV NODE_VERSION=${NODE_VERSION}
+
+# --------------------------------------------------------------------
+# 2. Installation de Node.js 22
+# --------------------------------------------------------------------
+# Nano Server ne possède pas nécessairement les outils/utilitaires
+# présents dans Server Core. On récupère directement l'archive ZIP
+# officielle de Node.js.
+# --------------------------------------------------------------------
+
+WORKDIR C:\
+
+RUN Invoke-WebRequest `
+        -Uri "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" `
+        -OutFile "C:\node.zip"; `
+    Expand-Archive `
+        -Path "C:\node.zip" `
+        -DestinationPath "C:\"; `
+    Rename-Item `
+        "C:\node-v${NODE_VERSION}-win-x64" `
+        "C:\nodejs"; `
+    Remove-Item `
+        "C:\node.zip" `
+        -Force
+
+# --------------------------------------------------------------------
+# 3. PATH
+# --------------------------------------------------------------------
+
+ENV PATH="C:\nodejs;C:\Windows\System32;C:\Windows"
+
+# --------------------------------------------------------------------
+# 4. Répertoire de l'application
+# --------------------------------------------------------------------
+
+WORKDIR C:\app
+
+# --------------------------------------------------------------------
+# 5. Application déjà construite par Jenkins
+# --------------------------------------------------------------------
+
+COPY package.json ./
+
+COPY dist ./dist
+
+COPY Backend ./Backend
+
+COPY public ./public
+
+COPY index.html ./
+
+COPY node_modules ./node_modules
+
+# --------------------------------------------------------------------
+# 6. Variables d'environnement
+# --------------------------------------------------------------------
+
+ENV NODE_ENV=production `
+    PORT=3000
+
+# --------------------------------------------------------------------
+# 7. Port HTTP
+# --------------------------------------------------------------------
+
+EXPOSE 3000
+
+# --------------------------------------------------------------------
+# 8. Démarrage
+# --------------------------------------------------------------------
+
+CMD ["C:\\nodejs\\node.exe", "C:\\app\\dist\\server.cjs"]
