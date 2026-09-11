@@ -19,9 +19,15 @@ pipeline {
         // =========================================================
 
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
-        IMAGE_TAG = 'latest'
+
+        // Pour le test Nano :
+        // latest = ancienne image Server Core
+        // nano-test = nouvelle image Nano Server
+        IMAGE_TAG = 'nano-test'
+
         CONTAINER_NAME = 'parc-it-app'
-        DOCKER_TAR = 'omoda-jaecoo-parc-it.tar'
+
+        DOCKER_TAR = 'omoda-jaecoo-parc-it-nano.tar'
 
 
         // =========================================================
@@ -289,7 +295,9 @@ pipeline {
         // =========================================================
 
         stage('Correction Dependances Natives Windows') {
+
             steps {
+
                 echo '=============================================='
                 echo 'DEPENDANCES NATIVES WINDOWS'
                 echo '=============================================='
@@ -297,24 +305,31 @@ pipeline {
                 bat '''
                     echo.
                     echo ===== INSTALLATION ROLLUP WINDOWS =====
+
                     npm install --no-save --force @rollup/rollup-win32-x64-msvc
+
 
                     if errorlevel 1 (
                         echo ERROR: Installation Rollup Windows echouee
                         exit /b 1
                     )
 
+
                     echo.
                     echo ===== INSTALLATION LIGHTNINGCSS WINDOWS =====
+
                     npm install --no-save --force lightningcss-win32-x64-msvc
+
 
                     if errorlevel 1 (
                         echo ERROR: Installation LightningCSS Windows echouee
                         exit /b 1
                     )
 
+
                     echo.
                     echo ===== VERIFICATION ROLLUP =====
+
                     if exist "node_modules\\@rollup\\rollup-win32-x64-msvc" (
                         echo ROLLUP WINDOWS OK
                     ) else (
@@ -322,14 +337,17 @@ pipeline {
                         exit /b 1
                     )
 
+
                     echo.
                     echo ===== VERIFICATION LIGHTNINGCSS =====
+
                     if exist "node_modules\\lightningcss-win32-x64-msvc" (
                         echo LIGHTNINGCSS WINDOWS OK
                     ) else (
                         echo ERROR: LightningCSS Windows introuvable
                         exit /b 1
                     )
+
 
                     echo.
                     echo ===== DEPENDANCES NATIVES WINDOWS OK =====
@@ -432,21 +450,33 @@ pipeline {
 
                     echo.
                     echo BUILD OK
+
+
+                    echo.
+                    echo ===== VERIFICATION DIST =====
+
+                    if exist dist (
+                        echo DIST PRESENT
+                        dir dist
+                    ) else (
+                        echo ERROR: DIST ABSENT
+                        exit /b 1
+                    )
                 '''
             }
         }
 
 
         // =========================================================
-        // 11. DOCKER BUILD
+        // 11. DOCKER BUILD - NANO SERVER
         // =========================================================
 
-        stage('Docker Build') {
+        stage('Docker Build Nano') {
 
             steps {
 
                 echo '=============================================='
-                echo 'DOCKER BUILD'
+                echo 'DOCKER BUILD - WINDOWS NANO SERVER 2025'
                 echo '=============================================='
 
                 bat '''
@@ -463,25 +493,49 @@ pipeline {
 
 
                     echo.
-                    echo ===== DOCKER BUILD =====
+                    echo ===== SUPPRESSION ANCIEN TEST NANO =====
+
+                    docker image rm "%IMAGE_NAME%:%IMAGE_TAG%" 2>nul || echo Aucun ancien nano-test
+
+
+                    echo.
+                    echo ===== DOCKER BUILD NANO =====
 
                     docker build ^
+                        -f Dockerfile.nano ^
                         -t "%IMAGE_NAME%:%IMAGE_TAG%" ^
-                        -t "%IMAGE_NAME%:%BUILD_NUMBER%" ^
                         .
 
 
                     if errorlevel 1 (
                         echo.
-                        echo ERROR: Docker build a echoue
+                        echo ERROR: Docker build Nano a echoue
                         exit /b 1
                     )
 
 
                     echo.
-                    echo ===== DOCKER BUILD OK =====
+                    echo ===== DOCKER BUILD NANO OK =====
+
+
+                    echo.
+                    echo ===== IMAGE NANO =====
 
                     docker images "%IMAGE_NAME%"
+
+
+                    echo.
+                    echo ===== TAILLE IMAGE NANO =====
+
+                    docker image inspect ^
+                        "%IMAGE_NAME%:%IMAGE_TAG%" ^
+                        --format "{{.Size}} bytes"
+
+
+                    echo.
+                    echo ===== HISTORIQUE IMAGE NANO =====
+
+                    docker history "%IMAGE_NAME%:%IMAGE_TAG%"
                 '''
             }
         }
@@ -496,7 +550,7 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'EXPORT IMAGE DOCKER'
+                echo 'EXPORT IMAGE DOCKER NANO'
                 echo '=============================================='
 
                 bat '''
@@ -579,12 +633,12 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'COPIE IMAGE VERS VM'
+                echo 'COPIE IMAGE NANO VERS VM'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== SCP IMAGE =====
+                    echo ===== SCP IMAGE NANO =====
 
                     "%SCP_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -647,15 +701,15 @@ pipeline {
 
 
         // =========================================================
-        // 16. DEPLOIEMENT CONTENEUR
+        // 16. DEPLOIEMENT CONTENEUR TEST NANO
         // =========================================================
 
-        stage('Deploy VM') {
+        stage('Deploy VM Nano Test') {
 
             steps {
 
                 echo '=============================================='
-                echo 'DEPLOIEMENT CONTENEUR SUR VM'
+                echo 'DEPLOIEMENT NANO TEST SUR VM'
                 echo '=============================================='
 
                 bat '''
@@ -689,7 +743,7 @@ pipeline {
 
 
                     echo.
-                    echo CONTENEUR DEPLOYE
+                    echo CONTENEUR NANO DEPLOYE
                 '''
             }
         }
@@ -823,26 +877,27 @@ pipeline {
                     if errorlevel 1 (
                         echo.
                         echo ERROR: port 3000 non accessible depuis Jenkins
+
                         echo.
                         echo ===== VERIFICATION CONTAINER =====
 
                         "%SSH_EXE%" ^
-                        -i "%SSH_KEY%" ^
-                        -o IdentitiesOnly=yes ^
-                        -o StrictHostKeyChecking=no ^
-                        "%VM_USER%@%VM_IP%" ^
-                        "docker ps -a --filter name=%CONTAINER_NAME%"
+                            -i "%SSH_KEY%" ^
+                            -o IdentitiesOnly=yes ^
+                            -o StrictHostKeyChecking=no ^
+                            "%VM_USER%@%VM_IP%" ^
+                            "docker ps -a --filter name=%CONTAINER_NAME%"
 
 
                         echo.
                         echo ===== LOGS CONTAINER =====
 
                         "%SSH_EXE%" ^
-                        -i "%SSH_KEY%" ^
-                        -o IdentitiesOnly=yes ^
-                        -o StrictHostKeyChecking=no ^
-                        "%VM_USER%@%VM_IP%" ^
-                        "docker logs --tail 100 %CONTAINER_NAME%"
+                            -i "%SSH_KEY%" ^
+                            -o IdentitiesOnly=yes ^
+                            -o StrictHostKeyChecking=no ^
+                            "%VM_USER%@%VM_IP%" ^
+                            "docker logs --tail 100 %CONTAINER_NAME%"
 
 
                         exit /b 1
@@ -863,7 +918,6 @@ pipeline {
 
     post {
 
-
         // =========================================================
         // SUCCESS
         // =========================================================
@@ -872,7 +926,7 @@ pipeline {
 
             echo '''
 ==============================================
-          PIPELINE TERMINE AVEC SUCCES
+       PIPELINE NANO SERVER TERMINE
 ==============================================
 
 Projet :
@@ -886,7 +940,10 @@ Container :
 parc-it-app
 
 Image :
-omoda-jaecoo-parc-it:latest
+omoda-jaecoo-parc-it:nano-test
+
+Base :
+Windows Nano Server 2025
 
 Port :
 3000
@@ -907,15 +964,19 @@ DEPLOYEE ET ACCESSIBLE
 
             echo '''
 ==============================================
-             PIPELINE EN ECHEC
+          PIPELINE EN ECHEC
 ==============================================
 
 Une des etapes du pipeline a echoue.
 
 Verifier l'etape en rouge dans Jenkins.
 
-Les logs Jenkins permettent d'identifier
-precisement le probleme.
+Pour Nano Server, verifier en particulier :
+- Dockerfile.nano
+- Node.js
+- dependances natives Windows
+- docker logs
+- compatibilite Node.js avec Nano Server
 
 ==============================================
 '''
