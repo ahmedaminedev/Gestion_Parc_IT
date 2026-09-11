@@ -285,15 +285,15 @@ pipeline {
 
 
         // =========================================================
-        // 7. CORRECTION ROLLUP WINDOWS
+        // 7. CORRECTION DEPENDANCES NATIVES WINDOWS
         // =========================================================
 
-        stage('Correction Rollup Windows') {
+        stage('Correction Dependances Natives Windows') {
 
             steps {
 
                 echo '=============================================='
-                echo 'ROLLUP WINDOWS'
+                echo 'DEPENDANCES NATIVES WINDOWS'
                 echo '=============================================='
 
                 bat '''
@@ -302,10 +302,33 @@ pipeline {
 
                     npm install --no-save --force @rollup/rollup-win32-x64-msvc
 
-
                     if errorlevel 1 (
                         echo.
                         echo ERROR: installation Rollup Windows echouee
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== INSTALLATION LIGHTNINGCSS WINDOWS =====
+
+                    npm install --no-save --force lightningcss-win32-x64-msvc
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: installation LightningCSS Windows echouee
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== INSTALLATION TAILWIND OXIDE WINDOWS =====
+
+                    npm install --no-save --force @tailwindcss/oxide-win32-x64-msvc
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: installation Tailwind Oxide Windows echouee
                         exit /b 1
                     )
 
@@ -322,7 +345,31 @@ pipeline {
 
 
                     echo.
-                    echo ROLLUP WINDOWS OK
+                    echo ===== VERIFICATION LIGHTNINGCSS =====
+
+                    if exist "node_modules\\lightningcss-win32-x64-msvc" (
+                        echo LIGHTNINGCSS WINDOWS FOUND
+                    ) else (
+                        echo ERROR: LIGHTNINGCSS WINDOWS NOT FOUND
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ===== VERIFICATION TAILWIND OXIDE =====
+
+                    if exist "node_modules\\@tailwindcss\\oxide-win32-x64-msvc" (
+                        echo TAILWIND OXIDE WINDOWS FOUND
+                    ) else (
+                        echo ERROR: TAILWIND OXIDE WINDOWS NOT FOUND
+                        exit /b 1
+                    )
+
+
+                    echo.
+                    echo ==============================================
+                    echo DEPENDANCES NATIVES WINDOWS OK
+                    echo ==============================================
                 '''
             }
         }
