@@ -20,6 +20,7 @@ pipeline {
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
         IMAGE_TAG = 'latest'
         CONTAINER_NAME = 'parc-it-app'
+        DOCKER_TAR = 'omoda-jaecoo-parc-it.tar'
 
         // =========================================================
         // VM WINDOWS SERVER
@@ -29,7 +30,7 @@ pipeline {
 
         // =========================================================
         // SSH
-        // Jenkins fonctionne sous LocalSystem
+        // Jenkins tourne sous LocalSystem
         // Cette clé a été testée avec succès sous SYSTEM
         // =========================================================
         SSH_KEY = 'C:/Windows/System32/config/systemprofile/.ssh/jenkins_system_ed25519'
@@ -39,20 +40,15 @@ pipeline {
 
         // =========================================================
         // MONGODB
-        // MongoDB tourne sur la VM Windows Server
+        // MongoDB tourne sur la VM
         // =========================================================
         MONGODB_URI = 'mongodb://172.17.91.144:27017/Gestion_Parc_IT_2'
 
         // =========================================================
         // JWT
-        // TODO : déplacer plus tard dans Jenkins Credentials
+        // TODO : déplacer dans Jenkins Credentials plus tard
         // =========================================================
         JWT_SECRET = 'Secret_Key_OMODA_JAECOO_WindowsServer_2025'
-
-        // =========================================================
-        // DOCKER TAR
-        // =========================================================
-        DOCKER_TAR = 'omoda-jaecoo-parc-it.tar'
     }
 
 
@@ -64,6 +60,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
+
                 echo '=============================================='
                 echo 'CHECKOUT DU PROJET'
                 echo '=============================================='
@@ -84,11 +81,12 @@ pipeline {
 
 
         // =========================================================
-        // 2. ENVIRONNEMENT
+        // 2. VERIFICATION ENVIRONNEMENT
         // =========================================================
 
         stage('Verification Environnement') {
             steps {
+
                 echo '=============================================='
                 echo 'VERIFICATION ENVIRONNEMENT'
                 echo '=============================================='
@@ -113,10 +111,6 @@ pipeline {
                     echo.
                     echo ===== DOCKER CONTEXT =====
                     docker context show
-
-                    echo.
-                    echo ===== DOCKER INFO =====
-                    docker info
                 '''
             }
         }
@@ -128,6 +122,7 @@ pipeline {
 
         stage('Diagnostic SSH') {
             steps {
+
                 echo '=============================================='
                 echo 'DIAGNOSTIC SSH'
                 echo '=============================================='
@@ -139,27 +134,36 @@ pipeline {
 
                     echo.
                     echo ===== SCP EXECUTABLE =====
-                    "%SCP_EXE%" -V
+                    where scp.exe
 
                     echo.
                     echo ===== SSH KEY =====
+
                     if exist "%SSH_KEY%" (
                         echo SSH KEY FOUND
                     ) else (
                         echo ERROR: SSH KEY NOT FOUND
                         exit /b 1
                     )
+
+                    echo.
+                    echo ===== SSH KEY PATH =====
+                    echo %SSH_KEY%
+
+                    echo.
+                    echo ===== SSH DIAGNOSTIC OK =====
                 '''
             }
         }
 
 
         // =========================================================
-        // 4. TEST SSH VM
+        // 4. TEST SSH VERS LA VM
         // =========================================================
 
         stage('Test SSH VM') {
             steps {
+
                 echo '=============================================='
                 echo 'TEST SSH VERS LA VM'
                 echo '=============================================='
@@ -176,6 +180,7 @@ pipeline {
                         "hostname"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: SSH VERS LA VM ECHOUE
                         exit /b 1
                     )
@@ -193,13 +198,14 @@ pipeline {
 
         stage('Installation Dependances') {
             steps {
+
                 echo '=============================================='
                 echo 'INSTALLATION DES DEPENDANCES'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== INSTALLATION NPM =====
+                    echo ===== NPM INSTALL =====
 
                     npm install --include=dev --no-audit --no-fund
 
@@ -209,7 +215,7 @@ pipeline {
                     )
 
                     echo.
-                    echo ===== INSTALLATION BINAIRES WINDOWS =====
+                    echo ===== BINAIRES WINDOWS =====
 
                     npm install --no-save ^
                         @rollup/rollup-win32-x64-msvc ^
@@ -220,6 +226,9 @@ pipeline {
                         echo ERROR: installation des binaires Windows echouee
                         exit /b 1
                     )
+
+                    echo.
+                    echo INSTALLATION DEPENDANCES OK
                 '''
             }
         }
@@ -231,17 +240,19 @@ pipeline {
 
         stage('Verification TypeScript') {
             steps {
+
                 echo '=============================================='
                 echo 'VERIFICATION TYPESCRIPT'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== TSC =====
+                    echo ===== TSC --NOEMIT =====
 
                     npx tsc --noEmit
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: TypeScript contient des erreurs
                         exit /b 1
                     )
@@ -259,6 +270,7 @@ pipeline {
 
         stage('Tests') {
             steps {
+
                 echo '=============================================='
                 echo 'TESTS VITEST'
                 echo '=============================================='
@@ -270,7 +282,8 @@ pipeline {
                     npx vitest run
 
                     if errorlevel 1 (
-                        echo ERROR: Les tests ont echoue
+                        echo.
+                        echo ERROR: LES TESTS ONT ECHOUE
                         exit /b 1
                     )
 
@@ -282,18 +295,19 @@ pipeline {
 
 
         // =========================================================
-        // 8. BUILD FRONTEND
+        // 8. BUILD APPLICATION
         // =========================================================
 
         stage('Build Application') {
             steps {
+
                 echo '=============================================='
                 echo 'BUILD APPLICATION'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== BUILD =====
+                    echo ===== NPM RUN BUILD =====
 
                     npm run build
 
@@ -315,6 +329,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
+
                 echo '=============================================='
                 echo 'DOCKER BUILD'
                 echo '=============================================='
@@ -338,10 +353,8 @@ pipeline {
                     )
 
                     echo.
-                    echo DOCKER BUILD OK
+                    echo ===== DOCKER BUILD OK =====
 
-                    echo.
-                    echo ===== IMAGES =====
                     docker images "%IMAGE_NAME%"
                 '''
             }
@@ -354,17 +367,21 @@ pipeline {
 
         stage('Docker Save') {
             steps {
+
                 echo '=============================================='
                 echo 'EXPORT IMAGE DOCKER'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== DOCKER SAVE =====
+                    echo ===== SUPPRESSION ANCIEN TAR =====
 
                     if exist "%DOCKER_TAR%" (
                         del /F /Q "%DOCKER_TAR%"
                     )
+
+                    echo.
+                    echo ===== DOCKER SAVE =====
 
                     docker save ^
                         -o "%DOCKER_TAR%" ^
@@ -384,18 +401,19 @@ pipeline {
 
 
         // =========================================================
-        // 11. COPIE IMAGE VERS VM
+        // 11. PREPARATION VM
         // =========================================================
 
-        stage('SCP Image vers VM') {
+        stage('Preparation VM') {
             steps {
+
                 echo '=============================================='
-                echo 'COPIE IMAGE VERS VM'
+                echo 'PREPARATION VM'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== CREATION DOSSIER TEMPORAIRE VM =====
+                    echo ===== CREATION C:\\Temp =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -405,10 +423,30 @@ pipeline {
                         "if not exist C:\\Temp mkdir C:\\Temp"
 
                     if errorlevel 1 (
-                        echo ERROR: impossible de creer C:\\Temp sur la VM
+                        echo.
+                        echo ERROR: impossible de creer C:\\Temp
                         exit /b 1
                     )
 
+                    echo.
+                    echo PREPARATION VM OK
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 12. SCP IMAGE VERS VM
+        // =========================================================
+
+        stage('SCP Image vers VM') {
+            steps {
+
+                echo '=============================================='
+                echo 'COPIE IMAGE VERS VM'
+                echo '=============================================='
+
+                bat '''
                     echo.
                     echo ===== SCP IMAGE =====
 
@@ -420,7 +458,8 @@ pipeline {
                         "%VM_USER%@%VM_IP%:C:/Temp/%DOCKER_TAR%"
 
                     if errorlevel 1 (
-                        echo ERROR: SCP de l'image echoue
+                        echo.
+                        echo ERROR: SCP DE L IMAGE ECHOUE
                         exit /b 1
                     )
 
@@ -432,18 +471,19 @@ pipeline {
 
 
         // =========================================================
-        // 12. DEPLOIEMENT SUR VM
+        // 13. DOCKER LOAD SUR VM
         // =========================================================
 
-        stage('Deploy VM') {
+        stage('Docker Load VM') {
             steps {
+
                 echo '=============================================='
-                echo 'DEPLOIEMENT SUR VM'
+                echo 'DOCKER LOAD SUR VM'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== DOCKER LOAD SUR VM =====
+                    echo ===== DOCKER LOAD =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -453,11 +493,30 @@ pipeline {
                         "docker load -i C:\\Temp\\%DOCKER_TAR%"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: docker load a echoue
                         exit /b 1
                     )
 
+                    echo.
+                    echo DOCKER LOAD OK
+                '''
+            }
+        }
 
+
+        // =========================================================
+        // 14. DEPLOIEMENT CONTENEUR
+        // =========================================================
+
+        stage('Deploy VM') {
+            steps {
+
+                echo '=============================================='
+                echo 'DEPLOIEMENT CONTENEUR SUR VM'
+                echo '=============================================='
+
+                bat '''
                     echo.
                     echo ===== SUPPRESSION ANCIEN CONTENEUR =====
 
@@ -466,11 +525,10 @@ pipeline {
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker rm -f %CONTAINER_NAME% 2^>nul || echo Ancien conteneur absent"
-
+                        "docker rm -f %CONTAINER_NAME% 2^>nul || echo Aucun ancien conteneur"
 
                     echo.
-                    echo ===== CREATION DU CONTENEUR =====
+                    echo ===== DEPLOIEMENT NOUVEAU CONTENEUR =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -480,13 +538,32 @@ pipeline {
                         "docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=%JWT_SECRET% -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: docker run a echoue
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== VERIFICATION CONTENEUR =====
+                    echo CONTENEUR DEPLOYE
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 15. VERIFICATION DOCKER
+        // =========================================================
+
+        stage('Verification Docker') {
+            steps {
+
+                echo '=============================================='
+                echo 'VERIFICATION DOCKER'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== DOCKER PS =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -495,42 +572,24 @@ pipeline {
                         "%VM_USER%@%VM_IP%" ^
                         "docker ps --filter name=%CONTAINER_NAME%"
 
-                    if errorlevel 1 (
-                        echo ERROR: verification docker ps echouee
-                        exit /b 1
-                    )
-
-
                     echo.
-                    echo ===== CONTENEUR DEPLOYE =====
-                '''
-            }
-        }
-
-
-        // =========================================================
-        // 13. VERIFICATION APPLICATION
-        // =========================================================
-
-        stage('Verification Application') {
-            steps {
-                echo '=============================================='
-                echo 'VERIFICATION APPLICATION'
-                echo '=============================================='
-
-                bat '''
-                    echo.
-                    echo ===== CONTAINER STATUS =====
+                    echo ===== DOCKER INSPECT =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker inspect -f \"{{.Status}}\" %CONTAINER_NAME%"
+                        "docker inspect -f \"{{.State.Status}}\" %CONTAINER_NAME%"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: conteneur introuvable
+                        exit /b 1
+                    )
 
                     echo.
-                    echo ===== PORT 3000 =====
+                    echo ===== PORT =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -538,7 +597,23 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker port %CONTAINER_NAME%"
+                '''
+            }
+        }
 
+
+        // =========================================================
+        // 16. LOGS APPLICATION
+        // =========================================================
+
+        stage('Logs Application') {
+            steps {
+
+                echo '=============================================='
+                echo 'VERIFICATION LOGS APPLICATION'
+                echo '=============================================='
+
+                bat '''
                     echo.
                     echo ===== DERNIERS LOGS =====
 
@@ -547,7 +622,38 @@ pipeline {
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker logs --tail 30 %CONTAINER_NAME%"
+                        "docker logs --tail 50 %CONTAINER_NAME%"
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 17. VERIFICATION HTTP
+        // =========================================================
+
+        stage('Verification HTTP') {
+            steps {
+
+                echo '=============================================='
+                echo 'VERIFICATION HTTP'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== TEST PORT 3000 SUR VM =====
+
+                    powershell.exe -NoProfile -Command ^
+                        "$r = Test-NetConnection -ComputerName '%VM_IP%' -Port 3000 -WarningAction SilentlyContinue; if (-not $r.TcpTestSucceeded) { exit 1 }"
+
+                    if errorlevel 1 (
+                        echo.
+                        echo WARNING: port 3000 non accessible depuis Jenkins
+                        echo Le conteneur peut encore etre en cours de demarrage.
+                    ) else (
+                        echo.
+                        echo PORT 3000 ACCESSIBLE
+                    )
                 '''
             }
         }
@@ -555,19 +661,21 @@ pipeline {
 
 
     // =============================================================
-    // POST
+    // POST ACTIONS
     // =============================================================
 
     post {
 
         success {
+
             echo '''
 ==============================================
- PIPELINE TERMINE AVEC SUCCES
+          PIPELINE TERMINE AVEC SUCCES
 ==============================================
 
-Application :
-OMODA & JAECOO - Gestion de Parc Informatique
+Projet :
+OMODA & JAECOO
+Gestion de Parc Informatique & Support IT
 
 VM :
 172.17.91.144
@@ -575,30 +683,38 @@ VM :
 Container :
 parc-it-app
 
-Port :
-3000
-
 Image :
 omoda-jaecoo-parc-it:latest
 
+Port :
+3000
+
 ==============================================
 '''
         }
+
 
         failure {
+
             echo '''
 ==============================================
- PIPELINE EN ECHEC
+             PIPELINE EN ECHEC
 ==============================================
 
-Verifier l'etape Jenkins qui a echoue.
+Une des etapes du pipeline a echoue.
+
+Verifier l'etape en rouge dans Jenkins.
 
 ==============================================
 '''
         }
 
+
         always {
-            echo 'Nettoyage des fichiers temporaires Jenkins...'
+
+            echo '=============================================='
+            echo 'NETTOYAGE'
+            echo '=============================================='
 
             bat '''
                 if exist "%DOCKER_TAR%" (
