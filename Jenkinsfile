@@ -29,24 +29,20 @@ pipeline {
         VM_USER = 'Administrateur'
 
         // =========================================================
-        // SSH
-        // Jenkins tourne sous LocalSystem
-        // Cette clé a été testée avec succès sous SYSTEM
+        // SSH - Jenkins tourne sous LocalSystem
         // =========================================================
         SSH_KEY = 'C:/Windows/System32/config/systemprofile/.ssh/jenkins_system_ed25519'
-
         SSH_EXE = 'C:/Windows/System32/OpenSSH/ssh.exe'
         SCP_EXE = 'C:/Windows/System32/OpenSSH/scp.exe'
 
         // =========================================================
         // MONGODB
-        // MongoDB tourne sur la VM
         // =========================================================
         MONGODB_URI = 'mongodb://172.17.91.144:27017/Gestion_Parc_IT_2'
 
         // =========================================================
         // JWT
-        // TODO : déplacer dans Jenkins Credentials plus tard
+        // TODO : mettre dans Jenkins Credentials
         // =========================================================
         JWT_SECRET = 'Secret_Key_OMODA_JAECOO_WindowsServer_2025'
     }
@@ -158,7 +154,7 @@ pipeline {
 
 
         // =========================================================
-        // 4. TEST SSH VERS LA VM
+        // 4. TEST SSH VM
         // =========================================================
 
         stage('Test SSH VM') {
@@ -193,14 +189,48 @@ pipeline {
 
 
         // =========================================================
-        // 5. INSTALLATION DEPENDANCES
+        // 5. NETTOYAGE NODE_MODULES
+        // =========================================================
+
+        stage('Nettoyage Node Modules') {
+            steps {
+
+                echo '=============================================='
+                echo 'NETTOYAGE NODE_MODULES'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== SUPPRESSION NODE_MODULES =====
+
+                    if exist node_modules (
+                        rmdir /S /Q node_modules
+                    )
+
+                    echo.
+                    echo ===== VERIFICATION =====
+
+                    if exist node_modules (
+                        echo ERROR: node_modules existe encore
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo NODE_MODULES CLEAN
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 6. INSTALLATION DEPENDANCES
         // =========================================================
 
         stage('Installation Dependances') {
             steps {
 
                 echo '=============================================='
-                echo 'INSTALLATION DES DEPENDANCES'
+                echo 'INSTALLATION DEPENDANCES'
                 echo '=============================================='
 
                 bat '''
@@ -210,32 +240,63 @@ pipeline {
                     npm install --include=dev --no-audit --no-fund
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: npm install a echoue
                         exit /b 1
                     )
 
                     echo.
-                    echo ===== BINAIRES WINDOWS =====
-
-                    npm install --no-save ^
-                        @rollup/rollup-win32-x64-msvc ^
-                        lightningcss-win32-x64-msvc ^
-                        @tailwindcss/oxide-win32-x64-msvc
-
-                    if errorlevel 1 (
-                        echo ERROR: installation des binaires Windows echouee
-                        exit /b 1
-                    )
-
-                    echo.
-                    echo INSTALLATION DEPENDANCES OK
+                    echo NPM INSTALL TERMINE
                 '''
             }
         }
 
 
         // =========================================================
-        // 6. TYPESCRIPT
+        // 7. INSTALLATION EXPLICITE ROLLUP WINDOWS
+        // =========================================================
+
+        stage('Correction Rollup Windows') {
+            steps {
+
+                echo '=============================================='
+                echo 'ROLLUP WINDOWS'
+                echo '=============================================='
+
+                bat '''
+                    echo.
+                    echo ===== INSTALLATION ROLLUP WINDOWS =====
+
+                    npm install --no-save --force ^
+                        @rollup/rollup-win32-x64-msvc ^
+                        lightningcss-win32-x64-msvc ^
+                        @tailwindcss/oxide-win32-x64-msvc
+
+                    if errorlevel 1 (
+                        echo.
+                        echo ERROR: installation Rollup Windows echouee
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== VERIFICATION ROLLUP =====
+
+                    if exist "node_modules\\@rollup\\rollup-win32-x64-msvc" (
+                        echo ROLLUP WINDOWS FOUND
+                    ) else (
+                        echo ERROR: ROLLUP WINDOWS NOT FOUND
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ROLLUP WINDOWS OK
+                '''
+            }
+        }
+
+
+        // =========================================================
+        // 8. VERIFICATION TYPESCRIPT
         // =========================================================
 
         stage('Verification TypeScript') {
@@ -247,7 +308,7 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ===== TSC --NOEMIT =====
+                    echo ===== TSC =====
 
                     npx tsc --noEmit
 
@@ -265,7 +326,7 @@ pipeline {
 
 
         // =========================================================
-        // 7. TESTS
+        // 9. TESTS
         // =========================================================
 
         stage('Tests') {
@@ -295,7 +356,7 @@ pipeline {
 
 
         // =========================================================
-        // 8. BUILD APPLICATION
+        // 10. BUILD APPLICATION
         // =========================================================
 
         stage('Build Application') {
@@ -312,6 +373,7 @@ pipeline {
                     npm run build
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: npm run build a echoue
                         exit /b 1
                     )
@@ -324,7 +386,7 @@ pipeline {
 
 
         // =========================================================
-        // 9. DOCKER BUILD
+        // 11. DOCKER BUILD
         // =========================================================
 
         stage('Docker Build') {
@@ -337,6 +399,7 @@ pipeline {
                 bat '''
                     echo.
                     echo ===== DOCKER OS TYPE =====
+
                     docker info --format "{{.OSType}}"
 
                     echo.
@@ -348,6 +411,7 @@ pipeline {
                         .
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: Docker build a echoue
                         exit /b 1
                     )
@@ -362,7 +426,7 @@ pipeline {
 
 
         // =========================================================
-        // 10. DOCKER SAVE
+        // 12. DOCKER SAVE
         // =========================================================
 
         stage('Docker Save') {
@@ -388,12 +452,14 @@ pipeline {
                         "%IMAGE_NAME%:%IMAGE_TAG%"
 
                     if errorlevel 1 (
+                        echo.
                         echo ERROR: docker save a echoue
                         exit /b 1
                     )
 
                     echo.
                     echo ===== TAR CREE =====
+
                     dir "%DOCKER_TAR%"
                 '''
             }
@@ -401,7 +467,7 @@ pipeline {
 
 
         // =========================================================
-        // 11. PREPARATION VM
+        // 13. PREPARATION VM
         // =========================================================
 
         stage('Preparation VM') {
@@ -436,7 +502,7 @@ pipeline {
 
 
         // =========================================================
-        // 12. SCP IMAGE VERS VM
+        // 14. SCP IMAGE VERS VM
         // =========================================================
 
         stage('SCP Image vers VM') {
@@ -471,7 +537,7 @@ pipeline {
 
 
         // =========================================================
-        // 13. DOCKER LOAD SUR VM
+        // 15. DOCKER LOAD SUR VM
         // =========================================================
 
         stage('Docker Load VM') {
@@ -506,7 +572,7 @@ pipeline {
 
 
         // =========================================================
-        // 14. DEPLOIEMENT CONTENEUR
+        // 16. DEPLOIEMENT CONTENEUR
         // =========================================================
 
         stage('Deploy VM') {
@@ -551,7 +617,7 @@ pipeline {
 
 
         // =========================================================
-        // 15. VERIFICATION DOCKER
+        // 17. VERIFICATION DOCKER
         // =========================================================
 
         stage('Verification Docker') {
@@ -603,7 +669,7 @@ pipeline {
 
 
         // =========================================================
-        // 16. LOGS APPLICATION
+        // 18. LOGS APPLICATION
         // =========================================================
 
         stage('Logs Application') {
@@ -629,7 +695,7 @@ pipeline {
 
 
         // =========================================================
-        // 17. VERIFICATION HTTP
+        // 19. VERIFICATION HTTP
         // =========================================================
 
         stage('Verification HTTP') {
