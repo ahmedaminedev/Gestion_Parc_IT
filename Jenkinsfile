@@ -799,7 +799,7 @@ pipeline {
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         "%VM_USER%@%VM_IP%" ^
-                        "for /f \"delims=\" %%A in ('docker inspect -f \"{{.State.Status}}\" %CONTAINER_NAME%') do @if /I not \"%%A\"==\"running\" exit /b 1"
+                        "docker inspect -f \"{{.State.Status}}\" %CONTAINER_NAME% | findstr /I \"running\""
 
 
                     if errorlevel 1 (
