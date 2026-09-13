@@ -502,7 +502,7 @@ pipeline {
                     echo ===== DOCKER BUILD NANO =====
 
                     docker build ^
-                        -f Dockerfile.nano ^
+                        -f Dockerfile.nano-app ^
                         -t "%IMAGE_NAME%:%IMAGE_TAG%" ^
                         .
 
@@ -695,6 +695,17 @@ pipeline {
 
                     echo.
                     echo DOCKER LOAD OK
+
+
+                    echo.
+                    echo ===== NETTOYAGE TAR VM =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "del /F /Q C:\\Temp\\%DOCKER_TAR%"
                 '''
             }
         }
@@ -863,23 +874,23 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'VERIFICATION HTTP'
+                echo 'VERIFICATION HTTP + MONGODB'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== TEST PORT 3000 SUR VM =====
+                    echo ===== TEST API HEALTH =====
 
                     powershell.exe -NoProfile -Command ^
-                        "$r = Test-NetConnection -ComputerName '%VM_IP%' -Port 3000 -WarningAction SilentlyContinue; if (-not $r.TcpTestSucceeded) { exit 1 }"
+                        "$r = Invoke-RestMethod -Uri 'http://%VM_IP%:3000/api/health' -TimeoutSec 15; $r | ConvertTo-Json -Depth 10; if ($r.status -ne 'ok') { exit 1 }; if ($r.dbConnected -ne $true) { exit 1 }"
 
 
                     if errorlevel 1 (
                         echo.
-                        echo ERROR: port 3000 non accessible depuis Jenkins
+                        echo ERROR: API HEALTH OU MONGODB INACCESSIBLE
 
                         echo.
-                        echo ===== VERIFICATION CONTAINER =====
+                        echo ===== DOCKER PS =====
 
                         "%SSH_EXE%" ^
                             -i "%SSH_KEY%" ^
@@ -905,7 +916,11 @@ pipeline {
 
 
                     echo.
-                    echo PORT 3000 ACCESSIBLE
+                    echo ==============================================
+                    echo API HEALTH OK
+                    echo MONGODB CONNECTION OK
+                    echo APPLICATION OK
+                    echo ==============================================
                 '''
             }
         }
