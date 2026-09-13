@@ -502,7 +502,7 @@ pipeline {
                     echo ===== DOCKER BUILD NANO =====
 
                     docker build ^
-                        -f Dockerfile.nano-app ^
+                        -f Dockerfile.nano ^
                         -t "%IMAGE_NAME%:%IMAGE_TAG%" ^
                         .
 
