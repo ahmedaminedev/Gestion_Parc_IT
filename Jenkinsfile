@@ -34,7 +34,7 @@ pipeline {
         // VM WINDOWS SERVER
         // =========================================================
 
-        VM_IP = '192.168.100.88'
+        VM_IP = '172.17.91.174'
         VM_USER = 'administrateur'
 
 
@@ -54,7 +54,7 @@ pipeline {
         // MONGODB
         // =========================================================
 
-        MONGODB_URI = 'mongodb://192.168.100.88:27017/Gestion_Parc_IT_2'
+        MONGODB_URI = 'mongodb://172.17.91.174:27017/Gestion_Parc_IT_2'
 
 
         // =========================================================
@@ -949,7 +949,7 @@ OMODA & JAECOO
 Gestion de Parc Informatique & Support IT
 
 VM :
-192.168.100.88
+172.17.91.174
 
 Container :
 parc-it-app

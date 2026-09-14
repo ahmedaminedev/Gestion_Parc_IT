@@ -25,11 +25,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          if [ -f "package-lock.json" ]; then
-            npm ci
-          else
-            npm install
-          fi
+          npm install --legacy-peer-deps
 
       - name: Run Full Test Suite (Vitest)
         run: npm run test:run
