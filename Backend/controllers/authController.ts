@@ -30,13 +30,15 @@ export function hashToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// Helper: Secure HttpOnly cookie options for Refresh Token (Optimized for Private Mode, Iframes & HTTPS)
+// Helper: Secure HttpOnly cookie options for Refresh Token (Protection hermétique anti-XSS et anti-CSRF)
 export function getRefreshCookieOptions(maxAgeMs: number, req?: Request) {
   const isHttps = process.env.NODE_ENV === 'production' || !!(req && (req.secure || req.headers['x-forwarded-proto'] === 'https'));
+  // Détecte si la requête provient d'un iframe de prévisualisation ou d'un accès direct sur le serveur
+  const isIframePreview = !!(req && (req.headers['sec-fetch-dest'] === 'iframe' || String(req.headers.referer || '').includes('run.app')));
   return {
-    httpOnly: true,
-    secure: isHttps,
-    sameSite: (isHttps ? 'none' : 'lax') as 'none' | 'lax',
+    httpOnly: true, // Hermétique aux scripts JavaScript (anti-vol de session XSS)
+    secure: isHttps, // Chiffrement en transit obligatoire sur connexion sécurisée
+    sameSite: (isIframePreview ? 'none' : 'strict') as 'none' | 'strict', // 'strict' bloque 100% des attaques CSRF
     maxAge: maxAgeMs,
     path: '/',
   };

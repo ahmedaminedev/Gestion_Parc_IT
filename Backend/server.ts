@@ -11,31 +11,36 @@ import authRoutes from './routes/authRoutes';
 import apiRoutes from './routes/apiRoutes';
 import messageRoutes from './routes/messageRoutes';
 import { setupSocketIO } from './services/socketService';
+import { 
+  secureCorsOptions, 
+  secureHelmet, 
+  noSqlSanitizer, 
+  apiGeneralRateLimiter 
+} from './middleware/security';
 
 const app = express();
+// Active la reconnaissance des proxys inverses (Cloud Run, Nginx, Windows Server IIS)
+app.set('trust proxy', 1);
+
 const server = http.createServer(app);
 const PORT = env.PORT || 5000;
 
 // Initialize Socket.io
 const io = setupSocketIO(server);
 
-// Middlewares
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+// 1. En-têtes HTTP de sécurité stricts (OWASP / Helmet)
+app.use(secureHelmet);
+
+// 2. CORS restreint aux adresses internes, LAN et domaines de l'entreprise
+app.use(cors(secureCorsOptions));
+
+// 3. Limitation de payload (protection anti-saturation mémoire)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(cookieParser());
 
-// Security headers for Lighthouse & OWASP Best Practices
-app.use((_req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  next();
-});
+// 4. Filtre Anti-Injection NoSQL récursif
+app.use(noSqlSanitizer);
 
 // Attach io to request
 app.use((req: any, _res, next) => {
@@ -43,16 +48,21 @@ app.use((req: any, _res, next) => {
   next();
 });
 
-// Static file serving for uploads (profile photos, attachments)
+// Static file serving for uploads (avec protection MIME anti-sniffing)
 const backendUploadsPath = path.join(process.cwd(), 'Backend', 'uploads');
 const rootUploadsPath = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(backendUploadsPath)) {
   fs.mkdirSync(backendUploadsPath, { recursive: true });
 }
-app.use('/uploads', express.static(backendUploadsPath));
-app.use('/uploads', express.static(rootUploadsPath));
+const secureStaticHeaders = (_req: any, res: any, next: any) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+};
+app.use('/uploads', secureStaticHeaders, express.static(backendUploadsPath));
+app.use('/uploads', secureStaticHeaders, express.static(rootUploadsPath));
 
-// API Routes
+// API Routes avec limitation de débit anti-DDoS applicatif
+app.use('/api', apiGeneralRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api', apiRoutes);

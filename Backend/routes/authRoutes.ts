@@ -12,12 +12,13 @@ import {
   updateProfile,
 } from '../controllers/authController';
 import { verifyToken } from '../middleware/auth';
+import { authRateLimiter } from '../middleware/security';
 
 const router = Router();
 
 router.get('/config', getAuthConfig);
 router.get('/active-roles', getActiveRoles);
-router.post('/login', login);
+router.post('/login', authRateLimiter, login);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.get('/me', verifyToken, getMe);
@@ -26,8 +27,8 @@ router.get('/me', verifyToken, getMe);
 router.put('/profile', verifyToken, updateProfile);
 router.post('/profile', verifyToken, updateProfile);
 router.post('/change-password', verifyToken, changePassword);
-router.post('/request-otp', requestPasswordResetOtp);
-router.post('/reset-password-otp', resetPasswordWithOtp);
+router.post('/request-otp', authRateLimiter, requestPasswordResetOtp);
+router.post('/reset-password-otp', authRateLimiter, resetPasswordWithOtp);
 
 export default router;
 
