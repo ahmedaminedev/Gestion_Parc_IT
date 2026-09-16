@@ -69,6 +69,16 @@ async function safeLogEmail(data: any): Promise<any> {
 }
 
 /**
+ * Returns the effective sender address (uses SMTP_FROM or generates a professional default from SMTP_USER).
+ */
+export function getEffectiveFromAddress(): string {
+  const custom = (process.env.SMTP_FROM || '').trim();
+  if (custom) return custom;
+  const user = (process.env.SMTP_USER || '').trim();
+  return user ? `Support IT OMODA & JAECOO <${user}>` : 'Support IT OMODA & JAECOO <support@omoda-jaecoo.tn>';
+}
+
+/**
  * Returns a summary of the SMTP configuration.
  */
 export function getSmtpConfigSummary() {
@@ -77,7 +87,7 @@ export function getSmtpConfigSummary() {
   const port = Number(process.env.SMTP_PORT) || 587;
   const user = (process.env.SMTP_USER || '').trim();
   const maskedUser = user ? user.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'Non configuré';
-  const from = (process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${user || 'support@omoda-jaecoo.tn'}>`).trim();
+  const from = getEffectiveFromAddress();
 
   return {
     configured,
@@ -236,7 +246,7 @@ export async function sendWelcomeEmail(params: SendWelcomeMailParams): Promise<{
     const transporter = await getMailTransporter();
     if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
 
-    const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    const fromAddress = getEffectiveFromAddress();
     await transporter.sendMail({
       from: fromAddress,
       to: destinataireEmail,
@@ -400,7 +410,7 @@ export async function sendAccountUpdatedEmail(params: SendAccountUpdatedMailPara
     const transporter = await getMailTransporter();
     if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
 
-    const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    const fromAddress = getEffectiveFromAddress();
     await transporter.sendMail({
       from: fromAddress,
       to: destinataireEmail,
@@ -520,7 +530,7 @@ export async function sendTicketCreatedEmail(params: SendTicketCreatedMailParams
   try {
     const transporter = await getMailTransporter();
     if (transporter) {
-      const fromAddress = process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${process.env.SMTP_USER}>`;
+      const fromAddress = getEffectiveFromAddress();
       await transporter.sendMail({
         from: fromAddress,
         to: destinataireEmail,
@@ -642,7 +652,7 @@ export async function sendTicketStatusEmail(params: SendTicketStatusMailParams):
   try {
     const transporter = await getMailTransporter();
     if (transporter) {
-      const fromAddress = process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${process.env.SMTP_USER}>`;
+      const fromAddress = getEffectiveFromAddress();
       await transporter.sendMail({
         from: fromAddress,
         to: destinataireEmail,
@@ -806,7 +816,7 @@ export async function sendPasswordChangedEmail(params: {
     const transporter = await getMailTransporter();
     if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
 
-    const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    const fromAddress = getEffectiveFromAddress();
     await transporter.sendMail({
       from: fromAddress,
       to: destinataireEmail,
@@ -949,7 +959,7 @@ export async function sendOtpResetEmail(params: {
     const transporter = await getMailTransporter();
     if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
 
-    const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    const fromAddress = getEffectiveFromAddress();
     await transporter.sendMail({
       from: fromAddress,
       to: destinataireEmail,
@@ -1008,7 +1018,7 @@ export async function testSmtpConnection(testRecipient?: string): Promise<{
     await transporter.verify();
 
     if (testRecipient && testRecipient.includes('@')) {
-      const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+      const fromAddress = getEffectiveFromAddress();
       await transporter.sendMail({
         from: fromAddress,
         to: testRecipient.trim().toLowerCase(),
