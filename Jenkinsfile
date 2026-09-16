@@ -140,11 +140,25 @@ pipeline {
                 bat '''
                     echo.
                     echo ===== SSH VERSION =====
+
                     "%SSH_EXE%" -V
 
+                    if errorlevel 1 (
+                        echo ERREUR : SSH introuvable
+                        exit /b 1
+                    )
+
                     echo.
-                    echo ===== SCP VERSION =====
-                    "%SCP_EXE%" -V
+                    echo ===== SCP EXECUTABLE =====
+
+                    if exist "%SCP_EXE%" (
+                        echo SCP TROUVE
+                        echo Chemin :
+                        echo %SCP_EXE%
+                    ) else (
+                        echo ERREUR : SCP INTROUVABLE
+                        exit /b 1
+                    )
 
                     echo.
                     echo ===== VERIFICATION CLE SSH =====
@@ -158,10 +172,28 @@ pipeline {
 
                     echo.
                     echo ===== CHEMIN CLE SSH =====
+
                     echo %SSH_KEY%
 
                     echo.
-                    echo DIAGNOSTIC SSH OK
+                    echo ===== TEST SSH CONFIGURATION =====
+
+                    "%SSH_EXE%" ^
+                        -G ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        >nul
+
+                    if errorlevel 1 (
+                        echo ERREUR : configuration SSH invalide
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== DIAGNOSTIC SSH OK =====
                 '''
             }
         }
