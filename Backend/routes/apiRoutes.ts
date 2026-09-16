@@ -12,7 +12,14 @@ import { Reclamation } from '../models/Reclamation';
 import { EmailLog } from '../models/EmailLog';
 import { Message } from '../models/Message';
 import { Conversation } from '../models/Conversation';
-import { sendWelcomeEmail, getSmtpConfigSummary, testSmtpConnection } from '../services/mailService';
+import {
+  sendWelcomeEmail,
+  sendAccountUpdatedEmail,
+  sendTicketCreatedEmail,
+  sendTicketStatusEmail,
+  getSmtpConfigSummary,
+  testSmtpConnection,
+} from '../services/mailService';
 import { saveAvatarBase64, deleteAvatarFile } from '../services/uploadService';
 import { verifyToken } from '../middleware/auth';
 import { getDashboardStats } from '../controllers/dashboardController';
@@ -269,18 +276,17 @@ router.post('/users', async (req, res) => {
     );
 
     if (shouldSendEmail && plainPassword.length > 0) {
-      try {
-        await sendWelcomeEmail({
-          email: cleanEmail,
-          beneficiaire: beneficiaire.trim(),
-          tempPassword: plainPassword,
-          role: targetRole.nom,
-          accesApp: resolvedAccesApp,
-        });
-        console.log(`[USER CREATED 👤] Email de bienvenue envoyé avec succès à ${cleanEmail}`);
-      } catch (err) {
+      sendWelcomeEmail({
+        email: cleanEmail,
+        beneficiaire: beneficiaire.trim(),
+        tempPassword: plainPassword,
+        role: targetRole.nom,
+        accesApp: resolvedAccesApp,
+      }).then(res => {
+        console.log(`[USER CREATED 👤] Notification email pour ${cleanEmail}: ${res.message}`);
+      }).catch(err => {
         console.error('[MAIL ERROR] Failed to send welcome email:', err);
-      }
+      });
     }
 
     const ret: any = newItem.toJSON();
@@ -380,30 +386,29 @@ router.put('/users/:id', async (req, res) => {
     const roleName = matchedRole ? matchedRole.nom : currentRoleNom;
     const resolvedAccesApp = user.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : (user.password ? 'ESPACE_RECLAMATIONS' : 'NONE'));
 
-    // If new password was assigned and email was requested, send official email with the exact saved password
-    const shouldSendEmail = (
+    // Send notification email when user is updated (credentials updated or access/profile changes)
+    const wantsNotification = req.body.sendWelcomeEmail === true || req.body.sendNotificationEmail === true;
+    const shouldSendUpdateEmail = (
       resolvedAccesApp !== 'NONE' && (
-        req.body.sendWelcomeEmail === true ||
-        req.body.sendNotificationEmail === true
-      ) && (
-        passwordUpdated ||
-        (wantsUserAccount && !hadPasswordBefore)
+        (passwordUpdated && plainPassword.length > 0) ||
+        wantsNotification
       )
     );
 
-    if (shouldSendEmail && plainPassword.length > 0) {
-      try {
-        await sendWelcomeEmail({
-          email: user.email,
-          beneficiaire: user.beneficiaire,
-          tempPassword: plainPassword,
-          role: roleName,
-          accesApp: resolvedAccesApp,
-        });
-        console.log(`[USER UPDATED 👤] Email d'identifiants envoyé avec succès à ${user.email} avec mot de passe enregistré.`);
-      } catch (err) {
+    if (shouldSendUpdateEmail) {
+      sendAccountUpdatedEmail({
+        email: user.email,
+        beneficiaire: user.beneficiaire,
+        role: roleName,
+        accesApp: resolvedAccesApp,
+        passwordUpdated: passwordUpdated && plainPassword.length > 0,
+        newPassword: passwordUpdated ? plainPassword : undefined,
+        statut: user.statut,
+      }).then(res => {
+        console.log(`[USER UPDATED 👤] Notification email pour ${user.email}: ${res.message}`);
+      }).catch(err => {
         console.error('[MAIL ERROR] Failed to send update welcome email:', err);
-      }
+      });
     }
 
     const ret: any = user.toJSON();
@@ -1156,6 +1161,21 @@ router.post('/reclamations', async (req: any, res) => {
     });
 
     await newItem.save();
+
+    // Send ticket creation confirmation email to demandeur
+    if (demandeurEmail && demandeurEmail.includes('@')) {
+      sendTicketCreatedEmail({
+        demandeurEmail,
+        demandeurNom,
+        code,
+        titre: newItem.titre,
+        description: newItem.description,
+        priorite: newItem.priorite,
+        slaHours,
+        dateEcheanceSla,
+      }).catch(err => console.error('[MAIL ERROR] Failed to send ticket created email:', err));
+    }
+
     res.status(201).json(newItem);
   } catch (err: any) {
     res.status(400).json({ message: err.message });
@@ -1284,6 +1304,21 @@ router.put('/reclamations/:id', async (req: any, res) => {
     }
 
     await rec.save();
+
+    // Send ticket status update email to demandeur
+    if (rec.demandeurEmail && rec.demandeurEmail.includes('@') && (req.body.statut || req.body.solution || req.body.id_TechnicienAssigne)) {
+      sendTicketStatusEmail({
+        demandeurEmail: rec.demandeurEmail,
+        demandeurNom: rec.demandeurNom || 'Collaborateur',
+        code: rec.code,
+        titre: rec.titre,
+        nouveauStatut: rec.statut,
+        technicienNom: rec.technicienNom,
+        solution: rec.solution,
+        dateResolution: rec.dateResolution,
+      }).catch(err => console.error('[MAIL ERROR] Failed to send ticket status email:', err));
+    }
+
     res.json(rec);
   } catch (err: any) {
     res.status(400).json({ message: err.message });

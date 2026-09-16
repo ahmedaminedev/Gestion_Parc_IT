@@ -6,8 +6,8 @@ export interface IEmailLog extends Document {
   destinataireNom: string;
   sujet: string;
   contenuHtml: string;
-  type: 'BIENVENUE_USER' | 'NOTIFICATION_RECLAMATION' | 'RESOLUTION_RECLAMATION' | 'OTP_RESET_PASSWORD' | 'PASSWORD_CHANGED';
-  statut: 'Envoyé' | 'Délivré' | 'Simulation (SMTP non configuré)' | "Échec d'envoi";
+  type: 'BIENVENUE_USER' | 'MISE_A_JOUR_USER' | 'NOTIFICATION_RECLAMATION' | 'RESOLUTION_RECLAMATION' | 'OTP_RESET_PASSWORD' | 'PASSWORD_CHANGED' | 'TEST_SMTP' | string;
+  statut: 'Envoyé' | 'Délivré' | 'Simulation (SMTP non configuré)' | "Échec d'envoi" | string;
   errorMessage?: string;
   tempPasswordPreview?: string;
   dateEnvoi: Date;
@@ -22,7 +22,6 @@ const EmailLogSchema: Schema = new Schema(
     contenuHtml: { type: String, required: true },
     type: {
       type: String,
-      enum: ['BIENVENUE_USER', 'NOTIFICATION_RECLAMATION', 'RESOLUTION_RECLAMATION', 'OTP_RESET_PASSWORD', 'PASSWORD_CHANGED'],
       default: 'BIENVENUE_USER',
     },
     statut: {

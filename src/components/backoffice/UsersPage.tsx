@@ -39,6 +39,7 @@ import { authService } from '../../services/authService';
 import { Beneficiaire, Emplacement, Materiel, GroupeMateriel, Role, normalizeRoleName } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal, ConfirmModalItem } from '../common/CustomConfirmModal';
+import { EmailAuditModal } from './EmailAuditModal';
 
 type ActiveTab = 'roles' | 'users' | 'employees';
 
@@ -104,6 +105,7 @@ export const UsersPage: React.FC = () => {
   const [userModalAlert, setUserModalAlert] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
   const [accessModalAlert, setAccessModalAlert] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
   const [roleModalAlert, setRoleModalAlert] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
+  const [isEmailAuditModalOpen, setIsEmailAuditModalOpen] = useState(false);
 
   // Form States
   const [userFormData, setUserFormData] = useState({
@@ -289,7 +291,7 @@ export const UsersPage: React.FC = () => {
       password: '',
       statut: user.statut || 'Actif',
       id_Emplacement: user.id_Emplacement || '',
-      sendWelcomeEmail: false,
+      sendWelcomeEmail: true,
     });
     setShowUserPassword(false);
     setIsUserModalOpen(true);
@@ -928,7 +930,22 @@ export const UsersPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsEmailAuditModalOpen(true)}
+            className="flex items-center gap-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 text-xs font-bold px-3.5 py-2.5 rounded-xl shadow-2xs transition-all cursor-pointer"
+            title="Consulter le journal d'envoi des emails et tester la connexion SMTP"
+          >
+            <Mail className="w-4 h-4 text-blue-600" />
+            <span className="hidden sm:inline">Diagnostic E-mails & SMTP</span>
+            <span className="sm:hidden">Emails</span>
+            {smtpStatus?.configured ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+            )}
+          </button>
+
           {activeTab === 'roles' && (
             <button
               onClick={handleOpenAddRoleModal}
@@ -1882,17 +1899,34 @@ export const UsersPage: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
-                      <input
-                        id="sendWelcomeEmailUser"
-                        type="checkbox"
-                        checked={userFormData.sendWelcomeEmail}
-                        onChange={e => setUserFormData({ ...userFormData, sendWelcomeEmail: e.target.checked })}
-                        className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
-                      />
-                      <label htmlFor="sendWelcomeEmailUser" className="text-[11px] text-emerald-900 font-semibold cursor-pointer">
-                        Envoyer l'email officiel de bienvenue avec les identifiants
-                      </label>
+                    <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-xl space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="sendWelcomeEmailUser"
+                          type="checkbox"
+                          checked={userFormData.sendWelcomeEmail}
+                          onChange={e => setUserFormData({ ...userFormData, sendWelcomeEmail: e.target.checked })}
+                          className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 cursor-pointer"
+                        />
+                        <label htmlFor="sendWelcomeEmailUser" className="text-xs text-emerald-950 font-bold cursor-pointer">
+                          {editingItem
+                            ? "Envoyer un e-mail de notification au collaborateur (mise à jour du compte)"
+                            : "Envoyer l'e-mail officiel de bienvenue avec les identifiants"}
+                        </label>
+                      </div>
+                      <div className="text-[11px] text-emerald-800 pl-6 flex items-center gap-1.5">
+                        {smtpStatus?.configured ? (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>SMTP réel actif : L'e-mail sera délivré à {userFormData.email || 'l\'adresse renseignée'}.</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            <span>Mode simulation : SMTP non configuré dans .env. L'e-mail sera archivé dans le journal système.</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -2671,6 +2705,13 @@ export const UsersPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Email Audit & SMTP Diagnostic Modal */}
+      <EmailAuditModal
+        isOpen={isEmailAuditModalOpen}
+        onClose={() => setIsEmailAuditModalOpen(false)}
+        initialSmtpStatus={smtpStatus}
+      />
       </div>
     </div>
   );

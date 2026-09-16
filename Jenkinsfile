@@ -55,6 +55,18 @@ pipeline {
         // =========================================================
 
         JWT_SECRET = 'Secret_Key_OMODA_JAECOO_WindowsServer_2025'
+
+
+        // =========================================================
+        // NOTIFICATIONS PAR EMAIL (SMTP GMAIL)
+        // =========================================================
+
+        SMTP_HOST = 'smtp.gmail.com'
+        SMTP_PORT = '465'
+        SMTP_SECURE = 'true'
+        SMTP_USER = 'ahmedaminenafti20267@gmail.com'
+        SMTP_PASS = 'gtgahjcnevwqrdip'
+        SMTP_FROM = 'Support IT OMODA & JAECOO <ahmedaminenafti20267@gmail.com>'
     }
 
 
@@ -672,7 +684,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=%JWT_SECRET% -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
+                        "docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=%JWT_SECRET% -e SMTP_HOST=%SMTP_HOST% -e SMTP_PORT=%SMTP_PORT% -e SMTP_SECURE=%SMTP_SECURE% -e SMTP_USER=%SMTP_USER% -e SMTP_PASS=%SMTP_PASS% -e SMTP_FROM=\"%SMTP_FROM%\" -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
 
                     if errorlevel 1 (
                         echo ERREUR : docker run a echoue

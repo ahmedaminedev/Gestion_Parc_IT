@@ -13,20 +13,71 @@ export interface SendWelcomeMailParams {
   role?: string;
 }
 
-export function isSmtpConfigured(): boolean {
-  const host = (process.env.SMTP_HOST || '').trim();
-  const user = (process.env.SMTP_USER || '').trim();
-  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
-  return Boolean(host && user && pass);
+export interface SendAccountUpdatedMailParams {
+  email: string;
+  beneficiaire: string;
+  role: string;
+  accesApp: string;
+  passwordUpdated?: boolean;
+  newPassword?: string;
+  statut?: string;
+  emplacementNom?: string;
 }
 
+export interface SendTicketCreatedMailParams {
+  demandeurEmail: string;
+  demandeurNom: string;
+  code: string;
+  titre: string;
+  description: string;
+  priorite: string;
+  slaHours?: number;
+  dateEcheanceSla?: Date;
+}
+
+export interface SendTicketStatusMailParams {
+  demandeurEmail: string;
+  demandeurNom: string;
+  code: string;
+  titre: string;
+  nouveauStatut: string;
+  technicienNom?: string;
+  solution?: string;
+  dateResolution?: Date;
+}
+
+/**
+ * Checks if SMTP configuration has the minimal credentials to operate.
+ */
+export function isSmtpConfigured(): boolean {
+  const user = (process.env.SMTP_USER || '').trim();
+  const pass = (process.env.SMTP_PASS || '').replace(/\s+/g, '').trim();
+  return Boolean(user && pass);
+}
+
+/**
+ * Safe database logger for email events.
+ * Never throws even if MongoDB is in offline/in-memory mode.
+ */
+async function safeLogEmail(data: any): Promise<any> {
+  try {
+    return await EmailLog.create(data);
+  } catch (err: any) {
+    console.warn('[MAIL AUDIT ⚠️] Impossible d\'enregistrer le log email dans MongoDB:', err?.message || err);
+    return null;
+  }
+}
+
+/**
+ * Returns a summary of the SMTP configuration.
+ */
 export function getSmtpConfigSummary() {
   const configured = isSmtpConfigured();
   const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
   const port = Number(process.env.SMTP_PORT) || 587;
   const user = (process.env.SMTP_USER || '').trim();
   const maskedUser = user ? user.replace(/(.{2})(.*)(@.*)/, '$1***$3') : 'Non configuré';
-  const from = (process.env.SMTP_FROM || `Support Parc IT OMODA & JAECOO <${user || 'support@omoda-jaecoo.tn'}>`).trim();
+  const from = (process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${user || 'support@omoda-jaecoo.tn'}>`).trim();
 
   return {
     configured,
@@ -34,17 +85,20 @@ export function getSmtpConfigSummary() {
     port,
     user: maskedUser,
     from,
-    mode: configured ? 'SMTP Réel Actif (Gmail)' : 'Simulation locale (identifiants SMTP manquants dans .env)',
+    mode: configured ? 'SMTP Réel Actif' : 'Simulation locale (identifiants SMTP manquants dans .env)',
   };
 }
 
+/**
+ * Creates and returns a nodemailer Transporter.
+ */
 async function getMailTransporter(): Promise<nodemailer.Transporter | null> {
   if (!isSmtpConfigured()) {
     return null;
   }
 
   const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
-  const port = Number(process.env.SMTP_PORT) || 587;
+  const port = Number(process.env.SMTP_PORT) || (host.includes('gmail') ? 465 : 587);
   const secure = process.env.SMTP_SECURE === 'true' || port === 465;
   const user = (process.env.SMTP_USER || '').trim();
   // Strip whitespace from Gmail app passwords (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
@@ -58,11 +112,13 @@ async function getMailTransporter(): Promise<nodemailer.Transporter | null> {
     tls: {
       rejectUnauthorized: false,
     },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000,
   });
 }
 
+// ================= EMAIL: BIENVENUE NOUVEL UTILISATEUR =================
 export function generateWelcomeEmailHtml(params: SendWelcomeMailParams): string {
   const destinataireEmail = params.destinataireEmail || params.email || '';
   const destinataireNom = params.destinataireNom || params.beneficiaire || 'Collaborateur';
@@ -90,11 +146,8 @@ export function generateWelcomeEmailHtml(params: SendWelcomeMailParams): string 
     .greeting { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 16px; }
     .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 24px; }
     .credentials-box { background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 24px; }
-    .cred-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 13px; }
-    .cred-label { color: #94a3b8; font-weight: 600; }
-    .cred-value { color: #38bdf8; font-weight: 700; font-family: monospace; }
-    .cred-pwd { color: #f43f5e; font-weight: 900; letter-spacing: 1px; }
-    .btn-login { display: inline-block; background-color: #ef4444; color: #ffffff !important; text-decoration: none; font-weight: 700; font-size: 14px; padding: 12px 28px; border-radius: 10px; text-align: center; margin: 10px 0 20px 0; }
+    .cred-label { color: #94a3b8; font-size: 12px; font-weight: 600; }
+    .cred-value { color: #ffffff; font-size: 14px; font-weight: bold; }
     .footer { padding: 20px 24px; background-color: #0c1017; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1e293b; }
   </style>
 </head>
@@ -107,33 +160,33 @@ export function generateWelcomeEmailHtml(params: SendWelcomeMailParams): string 
     <div class="content">
       <div class="greeting">Bonjour ${destinataireNom},</div>
       <p class="message">
-        Bienvenue dans l'application <strong>OMODA | JAECOO Backoffice</strong>. Vous êtes désormais configuré comme utilisateur avec accès à la plateforme.
+        Bienvenue dans l'application <strong>OMODA | JAECOO Backoffice</strong>. Votre compte a été configuré avec succès avec les accès nécessaires.
       </p>
       
       <div class="credentials-box">
         <div style="font-size: 12px; font-weight: bold; color: #e2e8f0; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;">
           Vos Identifiants de Connexion
         </div>
-        <div style="margin-bottom: 8px;">
-          <span style="color: #94a3b8; font-size: 12px;">Email professionnel :</span><br/>
-          <span style="color: #ffffff; font-size: 14px; font-weight: bold;">${destinataireEmail}</span>
+        <div style="margin-bottom: 10px;">
+          <div class="cred-label">Identifiant / Email professionnel :</div>
+          <div class="cred-value">${destinataireEmail}</div>
         </div>
-        <div style="margin-bottom: 8px;">
-          <span style="color: #94a3b8; font-size: 12px;">Mot de passe temporaire :</span><br/>
-          <span style="color: #f43f5e; font-size: 16px; font-weight: 900; font-family: monospace; background: rgba(244,63,94,0.1); padding: 2px 8px; border-radius: 6px; display: inline-block; margin-top: 2px;">${motDePasse}</span>
+        <div style="margin-bottom: 10px;">
+          <div class="cred-label">Mot de passe temporaire :</div>
+          <div style="color: #f43f5e; font-size: 16px; font-weight: 900; font-family: monospace; background: rgba(244,63,94,0.1); padding: 4px 10px; border-radius: 6px; display: inline-block; margin-top: 4px;">${motDePasse}</div>
         </div>
         <div>
-          <span style="color: #94a3b8; font-size: 12px;">Rôle / Accès attribué :</span><br/>
-          <span style="color: #38bdf8; font-size: 13px; font-weight: 600;">${roleLabel} (${isDSI ? 'Backoffice Global IT' : 'Espace Réclamations & Matériels'})</span>
+          <div class="cred-label">Rôle & Espace attribué :</div>
+          <div style="color: #38bdf8; font-size: 13px; font-weight: 600; margin-top: 2px;">${roleLabel} (${isDSI ? 'Gestion IT Globale' : 'Espace Réclamations & Matériels'})</div>
         </div>
       </div>
 
       <p class="message" style="font-size: 13px; color: #94a3b8;">
-        Merci d'entrer votre email professionnel avec le mot de passe ci-dessus lors de votre première connexion. Vous pourrez ensuite suivre vos réclamations et vos matériels en temps réel.
+        Veuillez vous connecter avec cet email et ce mot de passe. Il est conseillé de personnaliser votre mot de passe depuis votre profil lors de votre première session.
       </p>
     </div>
     <div class="footer">
-      © ${new Date().getFullYear()} OMODA & JAECOO Tunisie. Direction des Systèmes d'Information (DSI). Ce message est confidentiel.
+      © ${new Date().getFullYear()} OMODA & JAECOO Tunisie • Direction des Systèmes d'Information (DSI)
     </div>
   </div>
 </body>
@@ -155,19 +208,15 @@ export async function sendWelcomeEmail(params: SendWelcomeMailParams): Promise<{
   const sujet = "Bienvenue dans l'application OMODA | JAECOO Backoffice - Vos identifiants d'accès";
 
   if (!isSmtpConfigured()) {
-    console.warn(
-      `[MAIL SERVICE ⚠️ SIMULATION] SMTP_USER ou SMTP_PASS n'est pas renseigné dans Backend/.env ou .env. ` +
-      `L'email pour ${destinataireEmail} a été simulé et archivé dans le journal d'audit (Mot de passe: ${motDePasse}).`
-    );
-
-    const log = await EmailLog.create({
+    console.warn(`[MAIL SERVICE ⚠️ SIMULATION] SMTP non configuré dans .env. Envoi simulé pour ${destinataireEmail}`);
+    const log = await safeLogEmail({
       destinataireEmail,
       destinataireNom,
       sujet,
       contenuHtml: html,
       type: 'BIENVENUE_USER',
       statut: 'Simulation (SMTP non configuré)',
-      errorMessage: 'SMTP_USER ou SMTP_PASS non renseigné dans Backend/.env (Simulation)',
+      errorMessage: 'SMTP_USER ou SMTP_PASS non renseigné dans .env (Mode simulation)',
       tempPasswordPreview: motDePasse,
       dateEnvoi: new Date(),
     });
@@ -182,28 +231,26 @@ export async function sendWelcomeEmail(params: SendWelcomeMailParams): Promise<{
 
   let statutEnvoi: 'Envoyé' | "Échec d'envoi" = 'Envoyé';
   let errorMessage = '';
-  let messageId: string | undefined;
 
   try {
     const transporter = await getMailTransporter();
     if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
 
     const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: fromAddress,
       to: destinataireEmail,
       subject: sujet,
-      html: html,
+      html,
     });
-    messageId = info?.messageId;
-    console.log(`[MAIL SERVICE 📧] ✅ Email de bienvenue délivré avec succès via SMTP à ${destinataireEmail} (Msg ID: ${messageId})`);
+    console.log(`[MAIL SERVICE 📧] ✅ Email de bienvenue délivré avec succès à ${destinataireEmail}`);
   } catch (err: any) {
     errorMessage = err?.message || String(err);
     statutEnvoi = "Échec d'envoi";
     console.error(`[MAIL SERVICE ❌ ERREUR SMTP] Échec de l'envoi de l'email à ${destinataireEmail}:`, errorMessage);
   }
 
-  const log = await EmailLog.create({
+  const log = await safeLogEmail({
     destinataireEmail,
     destinataireNom,
     sujet,
@@ -226,55 +273,404 @@ export async function sendWelcomeEmail(params: SendWelcomeMailParams): Promise<{
   };
 }
 
-export async function testSmtpConnection(testRecipient?: string): Promise<{
+// ================= EMAIL: MISE À JOUR D'UTILISATEUR / COMPTE =================
+export function generateAccountUpdatedEmailHtml(params: SendAccountUpdatedMailParams): string {
+  const isDSI = params.accesApp === 'GLOBAL_BACKOFFICE';
+  const roleLabel = params.role || (isDSI ? 'Responsable IT / Admin' : 'Collaborateur');
+
+  return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mise à jour de votre compte OMODA | JAECOO</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0c1017; color: #ffffff; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #161c24; border: 1px solid #2d3748; border-radius: 16px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #0c1017 0%, #1a2230 100%); padding: 28px 24px; text-align: center; border-bottom: 2px solid #38bdf8; }
+    .logo-text { font-size: 24px; font-weight: 900; letter-spacing: 2px; color: #ffffff; margin: 0; }
+    .logo-text span { color: #38bdf8; }
+    .sub-brand { font-size: 11px; text-transform: uppercase; letter-spacing: 3px; color: #94a3b8; margin-top: 6px; }
+    .content { padding: 32px 24px; }
+    .greeting { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 14px; }
+    .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; }
+    .info-box { background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 24px; }
+    .info-row { margin-bottom: 8px; font-size: 13px; }
+    .info-label { color: #94a3b8; font-weight: 600; font-size: 12px; }
+    .info-value { color: #f1f5f9; font-weight: 600; margin-top: 2px; }
+    .pwd-badge { color: #f43f5e; font-size: 15px; font-weight: 900; font-family: monospace; background: rgba(244,63,94,0.12); padding: 3px 8px; border-radius: 6px; display: inline-block; margin-top: 3px; }
+    .footer { padding: 20px 24px; background-color: #0c1017; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-text">OMODA <span>|</span> JAECOO</div>
+      <div class="sub-brand">Direction des Systèmes d'Information • Gestion des Accès</div>
+    </div>
+    <div class="content">
+      <div class="greeting">Bonjour ${params.beneficiaire},</div>
+      <p class="message">
+        Nous vous informons que les paramètres de votre compte professionnel <strong>OMODA | JAECOO</strong> ont été mis à jour par l'administrateur système.
+      </p>
+      
+      <div class="info-box">
+        <div style="font-size: 11px; font-weight: bold; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
+          Récapitulatif de votre profil
+        </div>
+        <div class="info-row">
+          <div class="info-label">Email de connexion :</div>
+          <div class="info-value">${params.email}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Rôle attribué :</div>
+          <div class="info-value" style="color: #38bdf8;">${roleLabel}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Espace applicatif :</div>
+          <div class="info-value">${isDSI ? 'Backoffice Global IT' : 'Espace Réclamations & Matériels'}</div>
+        </div>
+        ${params.statut ? `
+        <div class="info-row">
+          <div class="info-label">Statut du compte :</div>
+          <div class="info-value">${params.statut}</div>
+        </div>` : ''}
+        ${params.passwordUpdated && params.newPassword ? `
+        <div class="info-row" style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #334155;">
+          <div class="info-label" style="color: #f43f5e; font-weight: 700;">Nouveau mot de passe attribué :</div>
+          <div class="pwd-badge">${params.newPassword}</div>
+        </div>` : `
+        <div class="info-row" style="margin-top: 8px;">
+          <div class="info-label">Mot de passe :</div>
+          <div class="info-value" style="color: #94a3b8; font-style: italic;">Votre mot de passe actuel reste inchangé.</div>
+        </div>`}
+      </div>
+
+      <p class="message" style="font-size: 13px; color: #94a3b8;">
+        Si vous n'êtes pas à l'origine de cette demande ou si vous rencontrez des difficultés de connexion, veuillez contacter votre Responsable IT.
+      </p>
+    </div>
+    <div class="footer">
+      © ${new Date().getFullYear()} OMODA & JAECOO Tunisie • Direction des Systèmes d'Information (DSI)
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export async function sendAccountUpdatedEmail(params: SendAccountUpdatedMailParams): Promise<{
   success: boolean;
+  isSimulation: boolean;
   message: string;
-  details?: any;
+  emailLog?: any;
+  error?: string;
 }> {
+  const destinataireEmail = params.email.toLowerCase().trim();
+  const destinataireNom = params.beneficiaire || 'Collaborateur';
+  const html = generateAccountUpdatedEmailHtml(params);
+  const sujet = 'Mise à jour de votre compte professionnel - OMODA | JAECOO';
+
   if (!isSmtpConfigured()) {
+    console.warn(`[MAIL SERVICE ⚠️ SIMULATION] Mise à jour compte simulée pour ${destinataireEmail}`);
+    const log = await safeLogEmail({
+      destinataireEmail,
+      destinataireNom,
+      sujet,
+      contenuHtml: html,
+      type: 'MISE_A_JOUR_USER',
+      statut: 'Simulation (SMTP non configuré)',
+      errorMessage: 'SMTP_USER ou SMTP_PASS non renseigné dans .env (Mode simulation)',
+      tempPasswordPreview: params.passwordUpdated ? params.newPassword : 'Non modifié',
+      dateEnvoi: new Date(),
+    });
+
     return {
-      success: false,
-      message: 'SMTP non configuré : SMTP_USER et SMTP_PASS sont vides dans votre fichier .env ou Backend/.env.',
-      details: getSmtpConfigSummary(),
+      success: true,
+      isSimulation: true,
+      message: `Notification de mise à jour simulée pour ${destinataireEmail}`,
+      emailLog: log,
     };
+  }
+
+  let statutEnvoi: 'Envoyé' | "Échec d'envoi" = 'Envoyé';
+  let errorMessage = '';
+
+  try {
+    const transporter = await getMailTransporter();
+    if (!transporter) throw new Error('Impossible d\'initialiser le transporteur SMTP.');
+
+    const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    await transporter.sendMail({
+      from: fromAddress,
+      to: destinataireEmail,
+      subject: sujet,
+      html,
+    });
+    console.log(`[MAIL SERVICE 📧] ✅ Email de mise à jour de compte envoyé à ${destinataireEmail}`);
+  } catch (err: any) {
+    errorMessage = err?.message || String(err);
+    statutEnvoi = "Échec d'envoi";
+    console.error(`[MAIL SERVICE ❌] Erreur envoi email mise à jour à ${destinataireEmail}:`, errorMessage);
+  }
+
+  const log = await safeLogEmail({
+    destinataireEmail,
+    destinataireNom,
+    sujet,
+    contenuHtml: html,
+    type: 'MISE_A_JOUR_USER',
+    statut: statutEnvoi,
+    errorMessage: errorMessage || undefined,
+    tempPasswordPreview: params.passwordUpdated ? params.newPassword : 'Non modifié',
+    dateEnvoi: new Date(),
+  });
+
+  return {
+    success: statutEnvoi === 'Envoyé',
+    isSimulation: false,
+    message: statutEnvoi === 'Envoyé'
+      ? `Email de mise à jour envoyé à ${destinataireEmail}`
+      : `Échec d'envoi SMTP: ${errorMessage}`,
+    emailLog: log,
+    error: errorMessage || undefined,
+  };
+}
+
+// ================= EMAIL: CRÉATION DE RÉCLAMATION =================
+export function generateTicketCreatedEmailHtml(params: SendTicketCreatedMailParams): string {
+  return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticket IT Créé - ${params.code}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0c1017; color: #ffffff; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #161c24; border: 1px solid #2d3748; border-radius: 16px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #0c1017 0%, #1a2230 100%); padding: 28px 24px; text-align: center; border-bottom: 2px solid #ef4444; }
+    .logo-text { font-size: 24px; font-weight: 900; letter-spacing: 2px; color: #ffffff; margin: 0; }
+    .logo-text span { color: #ef4444; }
+    .sub-brand { font-size: 11px; text-transform: uppercase; letter-spacing: 3px; color: #94a3b8; margin-top: 6px; }
+    .content { padding: 32px 24px; }
+    .ticket-badge { display: inline-block; background-color: rgba(239, 68, 68, 0.15); color: #f87171; font-weight: 800; font-size: 13px; padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 16px; font-family: monospace; }
+    .greeting { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; }
+    .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; }
+    .ticket-box { background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+    .ticket-title { font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 10px; }
+    .footer { padding: 20px 24px; background-color: #0c1017; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-text">OMODA <span>|</span> JAECOO</div>
+      <div class="sub-brand">Direction des Systèmes d'Information • Support IT</div>
+    </div>
+    <div class="content">
+      <div class="ticket-badge">Ticket ${params.code}</div>
+      <div class="greeting">Bonjour ${params.demandeurNom},</div>
+      <p class="message">
+        Votre demande d'assistance IT a bien été enregistrée. L'équipe technique OMODA | JAECOO a été notifiée et prendra en charge votre réclamation dans les meilleurs délais.
+      </p>
+
+      <div class="ticket-box">
+        <div class="ticket-title">${params.titre}</div>
+        <p style="font-size: 13px; color: #94a3b8; margin: 0 0 12px 0;">${params.description}</p>
+        <div style="font-size: 12px; color: #cbd5e1;">
+          <strong>Priorité :</strong> <span style="color: #f87171;">${params.priorite}</span> • 
+          <strong>Délai SLA :</strong> ${params.slaHours || 24}h
+        </div>
+      </div>
+
+      <p class="message" style="font-size: 13px; color: #94a3b8;">
+        Vous pouvez suivre l'avancement de votre ticket en temps réel depuis votre espace collaborateur.
+      </p>
+    </div>
+    <div class="footer">
+      © ${new Date().getFullYear()} OMODA & JAECOO Tunisie • Direction des Systèmes d'Information (DSI)
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export async function sendTicketCreatedEmail(params: SendTicketCreatedMailParams): Promise<void> {
+  if (!params.demandeurEmail || !params.demandeurEmail.includes('@')) return;
+
+  const destinataireEmail = params.demandeurEmail.toLowerCase().trim();
+  const html = generateTicketCreatedEmailHtml(params);
+  const sujet = `[Support IT] Confirmation du ticket ${params.code} : ${params.titre}`;
+
+  if (!isSmtpConfigured()) {
+    await safeLogEmail({
+      destinataireEmail,
+      destinataireNom: params.demandeurNom,
+      sujet,
+      contenuHtml: html,
+      type: 'NOTIFICATION_RECLAMATION',
+      statut: 'Simulation (SMTP non configuré)',
+      errorMessage: 'SMTP non configuré',
+      dateEnvoi: new Date(),
+    });
+    return;
   }
 
   try {
     const transporter = await getMailTransporter();
-    if (!transporter) throw new Error('Impossible de créer le transporteur SMTP.');
-
-    await transporter.verify();
-
-    if (testRecipient && testRecipient.includes('@')) {
-      const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+    if (transporter) {
+      const fromAddress = process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${process.env.SMTP_USER}>`;
       await transporter.sendMail({
         from: fromAddress,
-        to: testRecipient.trim().toLowerCase(),
-        subject: 'Test de connexion SMTP - OMODA & JAECOO IT Park',
-        html: `
-          <div style="font-family: sans-serif; padding: 20px; background: #0c1017; color: #fff; border-radius: 10px;">
-            <h2 style="color: #ef4444;">OMODA | JAECOO</h2>
-            <p>Le test de connexion du serveur SMTP a réussi avec succès.</p>
-            <p style="color: #38bdf8;">Date du test : ${new Date().toLocaleString('fr-FR')}</p>
-          </div>
-        `,
+        to: destinataireEmail,
+        subject: sujet,
+        html,
+      });
+      await safeLogEmail({
+        destinataireEmail,
+        destinataireNom: params.demandeurNom,
+        sujet,
+        contenuHtml: html,
+        type: 'NOTIFICATION_RECLAMATION',
+        statut: 'Envoyé',
+        dateEnvoi: new Date(),
       });
     }
-
-    return {
-      success: true,
-      message: 'Connexion SMTP vérifiée avec succès !' + (testRecipient ? ` Email de test envoyé à ${testRecipient}` : ''),
-      details: getSmtpConfigSummary(),
-    };
   } catch (err: any) {
-    return {
-      success: false,
-      message: `Erreur de connexion SMTP : ${err.message || err}`,
-      details: {
-        ...getSmtpConfigSummary(),
-        error: err.message,
-      },
-    };
+    console.error(`[MAIL ERROR] Échec envoi confirmation ticket ${params.code}:`, err?.message || err);
+    await safeLogEmail({
+      destinataireEmail,
+      destinataireNom: params.demandeurNom,
+      sujet,
+      contenuHtml: html,
+      type: 'NOTIFICATION_RECLAMATION',
+      statut: "Échec d'envoi",
+      errorMessage: err?.message || String(err),
+      dateEnvoi: new Date(),
+    });
+  }
+}
+
+// ================= EMAIL: MISE À JOUR DE RÉCLAMATION =================
+export function generateTicketStatusEmailHtml(params: SendTicketStatusMailParams): string {
+  const isResolved = params.nouveauStatut === 'Résolue';
+  const color = isResolved ? '#10b981' : '#38bdf8';
+
+  return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mise à jour du Ticket IT - ${params.code}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0c1017; color: #ffffff; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #161c24; border: 1px solid #2d3748; border-radius: 16px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #0c1017 0%, #1a2230 100%); padding: 28px 24px; text-align: center; border-bottom: 2px solid ${color}; }
+    .logo-text { font-size: 24px; font-weight: 900; letter-spacing: 2px; color: #ffffff; margin: 0; }
+    .logo-text span { color: ${color}; }
+    .sub-brand { font-size: 11px; text-transform: uppercase; letter-spacing: 3px; color: #94a3b8; margin-top: 6px; }
+    .content { padding: 32px 24px; }
+    .greeting { font-size: 18px; font-weight: 700; color: #f8fafc; margin-bottom: 12px; }
+    .message { font-size: 14px; line-height: 1.6; color: #cbd5e1; margin-bottom: 20px; }
+    .ticket-box { background-color: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+    .status-badge { display: inline-block; background-color: rgba(56, 189, 248, 0.15); color: ${color}; font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 8px; margin-bottom: 12px; }
+    .footer { padding: 20px 24px; background-color: #0c1017; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #1e293b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-text">OMODA <span>|</span> JAECOO</div>
+      <div class="sub-brand">Direction des Systèmes d'Information • Support IT</div>
+    </div>
+    <div class="content">
+      <div class="greeting">Bonjour ${params.demandeurNom},</div>
+      <p class="message">
+        Le statut de votre ticket d'assistance <strong>${params.code}</strong> (${params.titre}) a évolué :
+      </p>
+
+      <div class="ticket-box">
+        <div class="status-badge">Nouveau Statut : ${params.nouveauStatut}</div>
+        ${params.technicienNom ? `
+        <div style="font-size: 13px; color: #cbd5e1; margin-bottom: 8px;">
+          <strong>Technicien en charge :</strong> ${params.technicienNom}
+        </div>` : ''}
+        ${params.solution ? `
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #334155;">
+          <div style="font-size: 12px; font-weight: 700; color: #38bdf8; margin-bottom: 4px;">Compte-rendu d'intervention :</div>
+          <p style="font-size: 13px; color: #ffffff; margin: 0;">${params.solution}</p>
+        </div>` : ''}
+      </div>
+
+      <p class="message" style="font-size: 13px; color: #94a3b8;">
+        Pour toute question ou complément d'information, n'hésitez pas à répondre ou à consulter votre espace réclamations.
+      </p>
+    </div>
+    <div class="footer">
+      © ${new Date().getFullYear()} OMODA & JAECOO Tunisie • Direction des Systèmes d'Information (DSI)
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+export async function sendTicketStatusEmail(params: SendTicketStatusMailParams): Promise<void> {
+  if (!params.demandeurEmail || !params.demandeurEmail.includes('@')) return;
+
+  const destinataireEmail = params.demandeurEmail.toLowerCase().trim();
+  const html = generateTicketStatusEmailHtml(params);
+  const isResolved = params.nouveauStatut === 'Résolue';
+  const typeAction = isResolved ? 'RESOLUTION_RECLAMATION' : 'NOTIFICATION_RECLAMATION';
+  const sujet = `[Support IT] Ticket ${params.code} : Statut mis à jour (${params.nouveauStatut})`;
+
+  if (!isSmtpConfigured()) {
+    await safeLogEmail({
+      destinataireEmail,
+      destinataireNom: params.demandeurNom,
+      sujet,
+      contenuHtml: html,
+      type: typeAction,
+      statut: 'Simulation (SMTP non configuré)',
+      errorMessage: 'SMTP non configuré',
+      dateEnvoi: new Date(),
+    });
+    return;
+  }
+
+  try {
+    const transporter = await getMailTransporter();
+    if (transporter) {
+      const fromAddress = process.env.SMTP_FROM || `Support IT OMODA & JAECOO <${process.env.SMTP_USER}>`;
+      await transporter.sendMail({
+        from: fromAddress,
+        to: destinataireEmail,
+        subject: sujet,
+        html,
+      });
+      await safeLogEmail({
+        destinataireEmail,
+        destinataireNom: params.demandeurNom,
+        sujet,
+        contenuHtml: html,
+        type: typeAction,
+        statut: 'Envoyé',
+        dateEnvoi: new Date(),
+      });
+    }
+  } catch (err: any) {
+    console.error(`[MAIL ERROR] Échec envoi mise à jour ticket ${params.code}:`, err?.message || err);
+    await safeLogEmail({
+      destinataireEmail,
+      destinataireNom: params.demandeurNom,
+      sujet,
+      contenuHtml: html,
+      type: typeAction,
+      statut: "Échec d'envoi",
+      errorMessage: err?.message || String(err),
+      dateEnvoi: new Date(),
+    });
   }
 }
 
@@ -384,7 +780,7 @@ export async function sendPasswordChangedEmail(params: {
   const sujet = 'Sécurité du compte : Votre mot de passe OMODA | JAECOO a été modifié';
 
   if (!isSmtpConfigured()) {
-    const log = await EmailLog.create({
+    const log = await safeLogEmail({
       destinataireEmail,
       destinataireNom,
       sujet,
@@ -423,7 +819,7 @@ export async function sendPasswordChangedEmail(params: {
     console.error(`[MAIL SERVICE ❌] Erreur envoi confirmation mot de passe à ${destinataireEmail}:`, errorMessage);
   }
 
-  const log = await EmailLog.create({
+  const log = await safeLogEmail({
     destinataireEmail,
     destinataireNom,
     sujet,
@@ -526,7 +922,7 @@ export async function sendOtpResetEmail(params: {
   const sujet = `Code de vérification [${params.otpCode}] - Réinitialisation mot de passe OMODA | JAECOO`;
 
   if (!isSmtpConfigured()) {
-    const log = await EmailLog.create({
+    const log = await safeLogEmail({
       destinataireEmail,
       destinataireNom,
       sujet,
@@ -566,7 +962,7 @@ export async function sendOtpResetEmail(params: {
     console.error(`[MAIL SERVICE ❌] Erreur envoi code OTP à ${destinataireEmail}:`, errorMessage);
   }
 
-  const log = await EmailLog.create({
+  const log = await safeLogEmail({
     destinataireEmail,
     destinataireNom,
     sujet,
@@ -588,3 +984,78 @@ export async function sendOtpResetEmail(params: {
   };
 }
 
+// ================= TEST DE CONNEXION SMTP & DIAGNOSTIC =================
+export async function testSmtpConnection(testRecipient?: string): Promise<{
+  success: boolean;
+  message: string;
+  details?: any;
+}> {
+  if (!isSmtpConfigured()) {
+    return {
+      success: false,
+      message: 'SMTP non configuré : SMTP_USER et SMTP_PASS sont absents dans le fichier .env ou les variables d\'environnement.',
+      details: {
+        ...getSmtpConfigSummary(),
+        astuce: 'Pour Gmail, activez la validation en 2 étapes sur votre compte Google et générez un Mot de passe d\'application (App Password) de 16 caractères.',
+      },
+    };
+  }
+
+  try {
+    const transporter = await getMailTransporter();
+    if (!transporter) throw new Error('Impossible de créer le transporteur SMTP.');
+
+    await transporter.verify();
+
+    if (testRecipient && testRecipient.includes('@')) {
+      const fromAddress = process.env.SMTP_FROM || `Support Parc IT <${process.env.SMTP_USER}>`;
+      await transporter.sendMail({
+        from: fromAddress,
+        to: testRecipient.trim().toLowerCase(),
+        subject: 'Test de connexion SMTP - OMODA & JAECOO IT Park',
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; background: #0c1017; color: #fff; border-radius: 10px;">
+            <h2 style="color: #ef4444;">OMODA | JAECOO</h2>
+            <p>Le test de connexion du serveur SMTP a réussi avec succès.</p>
+            <p style="color: #38bdf8;">Date du test : ${new Date().toLocaleString('fr-FR')}</p>
+          </div>
+        `,
+      });
+
+      await safeLogEmail({
+        destinataireEmail: testRecipient.trim().toLowerCase(),
+        destinataireNom: 'Testeur Administrateur',
+        sujet: 'Test de connexion SMTP - OMODA & JAECOO IT Park',
+        contenuHtml: '<p>Test de connexion SMTP</p>',
+        type: 'TEST_SMTP',
+        statut: 'Envoyé',
+        dateEnvoi: new Date(),
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Connexion SMTP établie et vérifiée avec succès !' + (testRecipient ? ` Email de test envoyé à ${testRecipient}` : ''),
+      details: getSmtpConfigSummary(),
+    };
+  } catch (err: any) {
+    const errorMsg = err?.message || String(err);
+    let suggestion = '';
+
+    if (errorMsg.includes('535') || errorMsg.includes('BadCredentials') || errorMsg.includes('Username and Password not accepted')) {
+      suggestion = 'Erreur 535 : Mot de passe ou nom d\'utilisateur refusé. Si vous utilisez Gmail, vous DEVEZ utiliser un "Mot de passe d\'application" généré depuis myaccount.google.com/apppasswords et non votre mot de passe habituel.';
+    } else if (errorMsg.includes('ETIMEDOUT') || errorMsg.includes('ECONNREFUSED')) {
+      suggestion = 'Délai d\'attente dépassé ou connexion refusée. Vérifiez que le port SMTP (587 ou 465) n\'est pas bloqué par le pare-feu du serveur Windows ou votre fournisseur d\'accès.';
+    }
+
+    return {
+      success: false,
+      message: `Échec de connexion SMTP : ${errorMsg}`,
+      details: {
+        ...getSmtpConfigSummary(),
+        error: errorMsg,
+        suggestion: suggestion || undefined,
+      },
+    };
+  }
+}
