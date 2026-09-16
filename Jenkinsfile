@@ -19,14 +19,8 @@ pipeline {
         // =========================================================
 
         IMAGE_NAME = 'omoda-jaecoo-parc-it'
-
-        // Pour le test Nano :
-        // latest = ancienne image Server Core
-        // nano-test = nouvelle image Nano Server
         IMAGE_TAG = 'nano-test'
-
         CONTAINER_NAME = 'parc-it-app'
-
         DOCKER_TAR = 'omoda-jaecoo-parc-it-nano.tar'
 
 
@@ -39,8 +33,7 @@ pipeline {
 
 
         // =========================================================
-        // SSH
-        // Jenkins tourne sous LocalSystem
+        // SSH - JENKINS LOCAL SYSTEM
         // =========================================================
 
         SSH_KEY = 'C:/Windows/System32/config/systemprofile/.ssh/jenkins_system_ed25519'
@@ -51,7 +44,7 @@ pipeline {
 
 
         // =========================================================
-        // MONGODB
+        // MONGODB SUR LA VM
         // =========================================================
 
         MONGODB_URI = 'mongodb://172.17.91.174:27017/Gestion_Parc_IT_2'
@@ -59,7 +52,6 @@ pipeline {
 
         // =========================================================
         // JWT
-        // TODO : déplacer dans Jenkins Credentials
         // =========================================================
 
         JWT_SECRET = 'Secret_Key_OMODA_JAECOO_WindowsServer_2025'
@@ -147,36 +139,29 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ===== SSH EXECUTABLE =====
-
+                    echo ===== SSH VERSION =====
                     "%SSH_EXE%" -V
 
+                    echo.
+                    echo ===== SCP VERSION =====
+                    "%SCP_EXE%" -V
 
                     echo.
-                    echo ===== SCP EXECUTABLE =====
-
-                    where scp.exe
-
-
-                    echo.
-                    echo ===== SSH KEY =====
+                    echo ===== VERIFICATION CLE SSH =====
 
                     if exist "%SSH_KEY%" (
-                        echo SSH KEY FOUND
+                        echo CLE SSH TROUVEE
                     ) else (
-                        echo ERROR: SSH KEY NOT FOUND
+                        echo ERREUR : CLE SSH INTROUVABLE
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== SSH KEY PATH =====
-
+                    echo ===== CHEMIN CLE SSH =====
                     echo %SSH_KEY%
 
-
                     echo.
-                    echo ===== SSH DIAGNOSTIC OK =====
+                    echo DIAGNOSTIC SSH OK
                 '''
             }
         }
@@ -196,25 +181,24 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ===== TEST SSH =====
+                    echo ===== CONNEXION SSH =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "hostname"
 
-
                     if errorlevel 1 (
                         echo.
-                        echo ERROR: SSH VERS LA VM ECHOUE
+                        echo ERREUR : CONNEXION SSH ECHOUEE
                         exit /b 1
                     )
 
-
                     echo.
-                    echo SSH VM OK
+                    echo CONNEXION SSH OK
                 '''
             }
         }
@@ -233,25 +217,16 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== SUPPRESSION NODE_MODULES =====
-
                     if exist node_modules (
                         rmdir /S /Q node_modules
                     )
 
-
-                    echo.
-                    echo ===== VERIFICATION =====
-
                     if exist node_modules (
-                        echo ERROR: node_modules existe encore
+                        echo ERREUR : node_modules existe encore
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo NODE_MODULES CLEAN
+                    echo NODE_MODULES SUPPRIME
                 '''
             }
         }
@@ -270,31 +245,24 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== NPM INSTALL =====
-
                     npm install --include=dev --no-audit --no-fund
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: npm install a echoue
+                        echo ERREUR : npm install a echoue
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo NPM INSTALL TERMINE
+                    echo INSTALLATION NPM TERMINEE
                 '''
             }
         }
 
 
         // =========================================================
-        // 7. CORRECTION DEPENDANCES NATIVES WINDOWS
+        // 7. DEPENDANCES NATIVES WINDOWS
         // =========================================================
 
-        stage('Correction Dependances Natives Windows') {
+        stage('Dependances Natives Windows') {
 
             steps {
 
@@ -304,28 +272,24 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ===== INSTALLATION ROLLUP WINDOWS =====
+                    echo ===== ROLLUP WINDOWS =====
 
                     npm install --no-save --force @rollup/rollup-win32-x64-msvc
 
-
                     if errorlevel 1 (
-                        echo ERROR: Installation Rollup Windows echouee
+                        echo ERREUR : installation Rollup echouee
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== INSTALLATION LIGHTNINGCSS WINDOWS =====
+                    echo ===== LIGHTNINGCSS WINDOWS =====
 
                     npm install --no-save --force lightningcss-win32-x64-msvc
 
-
                     if errorlevel 1 (
-                        echo ERROR: Installation LightningCSS Windows echouee
+                        echo ERREUR : installation LightningCSS echouee
                         exit /b 1
                     )
-
 
                     echo.
                     echo ===== VERIFICATION ROLLUP =====
@@ -333,10 +297,9 @@ pipeline {
                     if exist "node_modules\\@rollup\\rollup-win32-x64-msvc" (
                         echo ROLLUP WINDOWS OK
                     ) else (
-                        echo ERROR: Rollup Windows introuvable
+                        echo ERREUR : Rollup Windows introuvable
                         exit /b 1
                     )
-
 
                     echo.
                     echo ===== VERIFICATION LIGHTNINGCSS =====
@@ -344,20 +307,19 @@ pipeline {
                     if exist "node_modules\\lightningcss-win32-x64-msvc" (
                         echo LIGHTNINGCSS WINDOWS OK
                     ) else (
-                        echo ERROR: LightningCSS Windows introuvable
+                        echo ERREUR : LightningCSS Windows introuvable
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== DEPENDANCES NATIVES WINDOWS OK =====
+                    echo DEPENDANCES NATIVES WINDOWS OK
                 '''
             }
         }
 
 
         // =========================================================
-        // 8. VERIFICATION TYPESCRIPT
+        // 8. TYPESCRIPT
         // =========================================================
 
         stage('Verification TypeScript') {
@@ -369,20 +331,13 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== TSC =====
-
                     npx tsc --noEmit
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: TypeScript contient des erreurs
+                        echo ERREUR : TypeScript contient des erreurs
                         exit /b 1
                     )
 
-
-                    echo.
                     echo TYPESCRIPT OK
                 '''
             }
@@ -402,28 +357,21 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== VITEST =====
-
                     npx vitest run
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: LES TESTS ONT ECHOUE
+                        echo ERREUR : les tests ont echoue
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo TESTS OK
+                    echo TESTS VITEST OK
                 '''
             }
         }
 
 
         // =========================================================
-        // 10. BUILD APPLICATION
+        // 10. BUILD
         // =========================================================
 
         stage('Build Application') {
@@ -435,40 +383,29 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== NPM RUN BUILD =====
-
                     npm run build
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: npm run build a echoue
+                        echo ERREUR : npm run build a echoue
                         exit /b 1
                     )
-
-
-                    echo.
-                    echo BUILD OK
-
-
-                    echo.
-                    echo ===== VERIFICATION DIST =====
 
                     if exist dist (
-                        echo DIST PRESENT
+                        echo DOSSIER DIST PRESENT
                         dir dist
                     ) else (
-                        echo ERROR: DIST ABSENT
+                        echo ERREUR : dossier dist absent
                         exit /b 1
                     )
+
+                    echo BUILD APPLICATION OK
                 '''
             }
         }
 
 
         // =========================================================
-        // 11. DOCKER BUILD - NANO SERVER
+        // 11. DOCKER BUILD NANO
         // =========================================================
 
         stage('Docker Build Nano') {
@@ -476,66 +413,50 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'DOCKER BUILD - WINDOWS NANO SERVER 2025'
+                echo 'DOCKER BUILD NANO SERVER 2025'
                 echo '=============================================='
 
                 bat '''
                     echo.
                     echo ===== DOCKER OS TYPE =====
-
                     docker info --format "{{.OSType}}"
-
 
                     echo.
                     echo ===== DOCKER CONTEXT =====
-
                     docker context show
 
+                    echo.
+                    echo ===== SUPPRESSION ANCIENNE IMAGE =====
+
+                    docker image rm "%IMAGE_NAME%:%IMAGE_TAG%" 2>nul || echo Aucune ancienne image
 
                     echo.
-                    echo ===== SUPPRESSION ANCIEN TEST NANO =====
-
-                    docker image rm "%IMAGE_NAME%:%IMAGE_TAG%" 2>nul || echo Aucun ancien nano-test
-
-
-                    echo.
-                    echo ===== DOCKER BUILD NANO =====
+                    echo ===== BUILD IMAGE NANO =====
 
                     docker build ^
                         -f Dockerfile.nano ^
                         -t "%IMAGE_NAME%:%IMAGE_TAG%" ^
                         .
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: Docker build Nano a echoue
+                        echo ERREUR : Docker build Nano echoue
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== DOCKER BUILD NANO OK =====
-
-
-                    echo.
-                    echo ===== IMAGE NANO =====
+                    echo ===== IMAGE CREEE =====
 
                     docker images "%IMAGE_NAME%"
 
-
                     echo.
-                    echo ===== TAILLE IMAGE NANO =====
+                    echo ===== TAILLE IMAGE =====
 
                     docker image inspect ^
                         "%IMAGE_NAME%:%IMAGE_TAG%" ^
                         --format "{{.Size}} bytes"
 
-
                     echo.
-                    echo ===== HISTORIQUE IMAGE NANO =====
-
-                    docker history "%IMAGE_NAME%:%IMAGE_TAG%"
+                    echo DOCKER BUILD NANO OK
                 '''
             }
         }
@@ -550,37 +471,30 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'EXPORT IMAGE DOCKER NANO'
+                echo 'EXPORT IMAGE DOCKER'
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== SUPPRESSION ANCIEN TAR =====
-
                     if exist "%DOCKER_TAR%" (
                         del /F /Q "%DOCKER_TAR%"
                     )
-
-
-                    echo.
-                    echo ===== DOCKER SAVE =====
 
                     docker save ^
                         -o "%DOCKER_TAR%" ^
                         "%IMAGE_NAME%:%IMAGE_TAG%"
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: docker save a echoue
+                        echo ERREUR : docker save a echoue
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo ===== TAR CREE =====
-
-                    dir "%DOCKER_TAR%"
+                    if exist "%DOCKER_TAR%" (
+                        echo FICHIER TAR CREE
+                        dir "%DOCKER_TAR%"
+                    ) else (
+                        echo ERREUR : fichier TAR absent
+                        exit /b 1
+                    )
                 '''
             }
         }
@@ -599,25 +513,19 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== CREATION C:\\Temp =====
-
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "if not exist C:\\Temp mkdir C:\\Temp"
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: impossible de creer C:\\Temp
+                        echo ERREUR : impossible de preparer C:\\Temp
                         exit /b 1
                     )
 
-
-                    echo.
                     echo PREPARATION VM OK
                 '''
             }
@@ -633,37 +541,31 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'COPIE IMAGE NANO VERS VM'
+                echo 'COPIE IMAGE VERS VM'
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== SCP IMAGE NANO =====
-
                     "%SCP_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%DOCKER_TAR%" ^
                         "%VM_USER%@%VM_IP%:C:/Temp/%DOCKER_TAR%"
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: SCP DE L IMAGE ECHOUE
+                        echo ERREUR : SCP de l image echoue
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo SCP OK
+                    echo SCP IMAGE OK
                 '''
             }
         }
 
 
         // =========================================================
-        // 15. DOCKER LOAD SUR VM
+        // 15. DOCKER LOAD VM
         // =========================================================
 
         stage('Docker Load VM') {
@@ -675,35 +577,29 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== DOCKER LOAD =====
-
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker load -i C:\\Temp\\%DOCKER_TAR%"
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: docker load a echoue
+                        echo ERREUR : docker load a echoue
                         exit /b 1
                     )
 
-
-                    echo.
                     echo DOCKER LOAD OK
 
-
                     echo.
-                    echo ===== NETTOYAGE TAR VM =====
+                    echo ===== SUPPRESSION TAR SUR VM =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "del /F /Q C:\\Temp\\%DOCKER_TAR%"
                 '''
@@ -712,15 +608,15 @@ pipeline {
 
 
         // =========================================================
-        // 16. DEPLOIEMENT CONTENEUR TEST NANO
+        // 16. DEPLOIEMENT CONTENEUR
         // =========================================================
 
-        stage('Deploy VM Nano Test') {
+        stage('Deploy VM Nano') {
 
             steps {
 
                 echo '=============================================='
-                echo 'DEPLOIEMENT NANO TEST SUR VM'
+                echo 'DEPLOIEMENT CONTENEUR NANO'
                 echo '=============================================='
 
                 bat '''
@@ -731,30 +627,27 @@ pipeline {
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker rm -f %CONTAINER_NAME% 2^>nul || echo Aucun ancien conteneur"
 
-
                     echo.
-                    echo ===== DEPLOIEMENT NOUVEAU CONTENEUR =====
+                    echo ===== CREATION NOUVEAU CONTENEUR =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker run -d --name %CONTAINER_NAME% --restart unless-stopped -p 3000:3000 -e NODE_ENV=production -e PORT=3000 -e MONGODB_URI=%MONGODB_URI% -e JWT_SECRET=%JWT_SECRET% -v app_uploads:C:\\app\\uploads %IMAGE_NAME%:%IMAGE_TAG%"
 
-
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: docker run a echoue
+                        echo ERREUR : docker run a echoue
                         exit /b 1
                     )
 
-
-                    echo.
-                    echo CONTENEUR NANO DEPLOYE
+                    echo CONTENEUR DEPLOYE
                 '''
             }
         }
@@ -780,57 +673,53 @@ pipeline {
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker ps --filter name=%CONTAINER_NAME%"
-
+                        "docker ps -a --filter name=%CONTAINER_NAME%"
 
                     echo.
-                    echo ===== DOCKER INSPECT =====
+                    echo ===== ETAT CONTENEUR =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker inspect -f \"{{.State.Status}}\" %CONTAINER_NAME%"
-
+                        "docker inspect -f "{{.State.Status}}" %CONTAINER_NAME%"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: conteneur introuvable
+                        echo ERREUR : conteneur introuvable
                         exit /b 1
                     )
 
-
                     echo.
-                    echo ===== VERIFICATION ETAT RUNNING =====
+                    echo ===== VERIFICATION RUNNING =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker inspect -f \"{{.State.Status}}\" %CONTAINER_NAME% | findstr /I \"running\""
-
+                        "docker inspect -f "{{.State.Status}}" %CONTAINER_NAME%" ^
+                        | findstr /I "running"
 
                     if errorlevel 1 (
-                        echo.
-                        echo ERROR: le conteneur n'est pas RUNNING
+                        echo ERREUR : le conteneur n est pas RUNNING
                         exit /b 1
                     )
 
-
-                    echo.
                     echo CONTENEUR RUNNING OK
 
-
                     echo.
-                    echo ===== PORT =====
+                    echo ===== PORTS =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker port %CONTAINER_NAME%"
                 '''
@@ -847,17 +736,15 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'VERIFICATION LOGS APPLICATION'
+                echo 'LOGS APPLICATION'
                 echo '=============================================='
 
                 bat '''
-                    echo.
-                    echo ===== DERNIERS LOGS =====
-
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
                         "docker logs --tail 50 %CONTAINER_NAME%"
                 '''
@@ -866,7 +753,7 @@ pipeline {
 
 
         // =========================================================
-        // 19. VERIFICATION HTTP
+        // 19. VERIFICATION HTTP ET MONGODB
         // =========================================================
 
         stage('Verification HTTP') {
@@ -874,20 +761,19 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'VERIFICATION HTTP + MONGODB'
+                echo 'VERIFICATION API ET MONGODB'
                 echo '=============================================='
 
                 bat '''
                     echo.
                     echo ===== TEST API HEALTH =====
 
-                    powershell.exe -NoProfile -Command ^
+                    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
                         "$r = Invoke-RestMethod -Uri 'http://%VM_IP%:3000/api/health' -TimeoutSec 15; $r | ConvertTo-Json -Depth 10; if ($r.status -ne 'ok') { exit 1 }; if ($r.dbConnected -ne $true) { exit 1 }"
-
 
                     if errorlevel 1 (
                         echo.
-                        echo ERROR: API HEALTH OU MONGODB INACCESSIBLE
+                        echo ERREUR : API HEALTH OU MONGODB INACCESSIBLE
 
                         echo.
                         echo ===== DOCKER PS =====
@@ -896,24 +782,23 @@ pipeline {
                             -i "%SSH_KEY%" ^
                             -o IdentitiesOnly=yes ^
                             -o StrictHostKeyChecking=no ^
+                            -o UserKnownHostsFile=NUL ^
                             "%VM_USER%@%VM_IP%" ^
                             "docker ps -a --filter name=%CONTAINER_NAME%"
 
-
                         echo.
-                        echo ===== LOGS CONTAINER =====
+                        echo ===== LOGS CONTENEUR =====
 
                         "%SSH_EXE%" ^
                             -i "%SSH_KEY%" ^
                             -o IdentitiesOnly=yes ^
                             -o StrictHostKeyChecking=no ^
+                            -o UserKnownHostsFile=NUL ^
                             "%VM_USER%@%VM_IP%" ^
                             "docker logs --tail 100 %CONTAINER_NAME%"
 
-
                         exit /b 1
                     )
-
 
                     echo.
                     echo ==============================================
@@ -932,10 +817,6 @@ pipeline {
     // =============================================================
 
     post {
-
-        // =========================================================
-        // SUCCESS
-        // =========================================================
 
         success {
 
@@ -960,6 +841,9 @@ omoda-jaecoo-parc-it:nano-test
 Base :
 Windows Nano Server 2025
 
+MongoDB :
+mongodb://172.17.91.174:27017/Gestion_Parc_IT_2
+
 Port :
 3000
 
@@ -971,10 +855,6 @@ DEPLOYEE ET ACCESSIBLE
         }
 
 
-        // =========================================================
-        // FAILURE
-        // =========================================================
-
         failure {
 
             echo '''
@@ -984,34 +864,34 @@ DEPLOYEE ET ACCESSIBLE
 
 Une des etapes du pipeline a echoue.
 
-Verifier l'etape en rouge dans Jenkins.
+Verifier l etape en rouge dans Jenkins.
 
-Pour Nano Server, verifier en particulier :
+Points a verifier :
 - Dockerfile.nano
-- Node.js
-- dependances natives Windows
+- Node.js Nano Server
+- Dependances natives Windows
+- MongoDB Windows Service
+- bindIp dans mongod.cfg
+- Firewall TCP 27017
 - docker logs
-- compatibilite Node.js avec Nano Server
+- connexion SSH
+- compatibilite Nano Server
 
 ==============================================
 '''
         }
 
 
-        // =========================================================
-        // ALWAYS
-        // =========================================================
-
         always {
 
             echo '=============================================='
-            echo 'NETTOYAGE'
+            echo 'NETTOYAGE FICHIER TAR'
             echo '=============================================='
 
             bat '''
                 if exist "%DOCKER_TAR%" (
                     del /F /Q "%DOCKER_TAR%"
-                    echo TAR Docker supprime.
+                    echo FICHIER TAR SUPPRIME
                 )
             '''
         }
