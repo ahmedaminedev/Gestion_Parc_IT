@@ -698,7 +698,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Get-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow | Out-Null; Write-Output 'REGLE FIREWALL TCP 3000 CREEE' } else { Write-Output 'REGLE FIREWALL TCP 3000 ACTIVE' }\""
+                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Get-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -ErrorAction SilentlyContinue)) { [void](New-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow); Write-Output 'REGLE FIREWALL TCP 3000 CREEE' } else { Write-Output 'REGLE FIREWALL TCP 3000 ACTIVE' }\""
 
                     echo CONTENEUR DEPLOYE
                 '''
@@ -837,7 +837,7 @@ pipeline {
                                 $r = Invoke-RestMethod -Uri $url -TimeoutSec 6 -ErrorAction Stop; ^
                                 if ($r.status -eq 'ok' -and $r.dbConnected -eq $true) { ^
                                     Write-Host 'Succes: API Health et MongoDB operationnels !'; ^
-                                    $r | ConvertTo-Json -Depth 5; ^
+                                    ConvertTo-Json -InputObject $r -Depth 5; ^
                                     $success = $true; ^
                                     break; ^
                                 } elseif ($r.status -eq 'ok') { ^
@@ -860,7 +860,7 @@ pipeline {
                             -o StrictHostKeyChecking=no ^
                             -o UserKnownHostsFile=NUL ^
                             "%VM_USER%@%VM_IP%" ^
-                            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/health' -TimeoutSec 10 -ErrorAction Stop; if ($r.status -eq 'ok' -and $r.dbConnected -eq $true) { Write-Output 'TEST LOCAL VM REUSSI : API ET MONGODB FONCTIONNENT DANS LA VM'; $r | ConvertTo-Json -Depth 5; exit 0 } else { Write-Output 'Status non valide:'; $r | ConvertTo-Json; exit 1 } } catch { Write-Output ('Echec test local VM: ' + $_.Exception.Message); exit 1 }\""
+                            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/health' -TimeoutSec 10 -ErrorAction Stop; if ($r.status -eq 'ok' -and $r.dbConnected -eq $true) { Write-Output 'TEST LOCAL VM REUSSI : API ET MONGODB FONCTIONNENT DANS LA VM'; ConvertTo-Json -InputObject $r -Depth 5; exit 0 } else { Write-Output 'Status non valide:'; ConvertTo-Json -InputObject $r; exit 1 } } catch { Write-Output ('Echec test local VM: ' + $_.Exception.Message); exit 1 }\""
 
                         if errorlevel 1 (
                             echo.
