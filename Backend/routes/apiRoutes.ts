@@ -881,6 +881,13 @@ router.get('/stocks/summary', async (_req, res) => {
           enCours: compLitrage.filter((c: any) => c.utilisation !== '0%').length,
         },
       },
+      parUtilisation: {
+        '0%': compEnStock,
+        '25%': composants.filter((c: any) => c.utilisation === '25%').length,
+        '50%': composants.filter((c: any) => c.utilisation === '50%').length,
+        '75%': composants.filter((c: any) => c.utilisation === '75%').length,
+        '100%': compEpuises,
+      },
     };
 
     // 3. Stock Global Calculé (Matériels en stock + Composants en stock 0%)

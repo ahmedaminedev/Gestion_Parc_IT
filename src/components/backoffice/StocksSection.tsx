@@ -50,18 +50,18 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
   }, []);
 
   const {
-    totalMateriels,
-    materielsEnStock,
-    materielsEnService,
-    materielsEnPanne,
-    totalComposants,
-    composantsEnStock,
-    composantsSortisDuStock,
-    stockGlobalCalcule,
-    tauxDisponibiliteGlobal,
-    groupesStock,
+    totalMateriels = 0,
+    materielsEnStock = 0,
+    materielsEnService = 0,
+    materielsEnPanne = 0,
+    totalComposants = 0,
+    composantsEnStock = 0,
+    composantsSortisDuStock = 0,
+    stockGlobalCalcule = 0,
+    tauxDisponibiliteGlobal = 100,
+    groupesStock = [],
     composantsSummary,
-  } = stocksSummary;
+  } = stocksSummary || {};
 
   const totalArticlesPhysiques = totalMateriels + totalComposants;
 
@@ -361,7 +361,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
             </div>
             <span className="text-2xl font-bold text-emerald-700 mt-1.5 block">
-              {composantsSummary?.parUtilisation['0%'] || 0}
+              {composantsSummary?.parUtilisation?.['0%'] ?? composantsEnStock ?? 0}
             </span>
             <span className="text-[11px] text-emerald-700 mt-0.5 block font-medium">
               ✅ Compté en stock
@@ -375,7 +375,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               <Droplets className="w-3.5 h-3.5 text-blue-600" />
             </div>
             <span className="text-2xl font-bold text-blue-700 mt-1.5 block">
-              {(composantsSummary?.parUtilisation['25%'] || 0) + (composantsSummary?.parUtilisation['50%'] || 0)}
+              {(composantsSummary?.parUtilisation?.['25%'] ?? 0) + (composantsSummary?.parUtilisation?.['50%'] ?? 0)}
             </span>
             <span className="text-[11px] text-blue-600 mt-0.5 block font-medium">
               Sorti du stock (Stock - 1)
@@ -389,7 +389,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
             </div>
             <span className="text-2xl font-bold text-amber-700 mt-1.5 block">
-              {composantsSummary?.parUtilisation['75%'] || 0}
+              {composantsSummary?.parUtilisation?.['75%'] ?? 0}
             </span>
             <span className="text-[11px] text-amber-600 mt-0.5 block font-medium">
               Sorti du stock (Stock - 1)
@@ -403,7 +403,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
             </div>
             <span className="text-2xl font-bold text-rose-700 mt-1.5 block">
-              {composantsSummary?.parUtilisation['100%'] || 0}
+              {composantsSummary?.parUtilisation?.['100%'] ?? composantsSummary?.epuises ?? 0}
             </span>
             <span className="text-[11px] text-rose-600 mt-0.5 block font-medium">
               À renouveler (Stock - 1)

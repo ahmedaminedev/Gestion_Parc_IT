@@ -146,13 +146,10 @@ export const secureHelmet = helmet({
   contentSecurityPolicy: false, // Préserve le fonctionnement SPA Vite & styles dynamiques
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // Permet le chargement des pièces jointes et avatars
-  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  crossOriginOpenerPolicy: false, // Évite les avertissements COOP dans les iframes et environnements de prévisualisation
   frameguard: false, // Permet l'affichage dans la console de gestion interne
   hidePoweredBy: true, // Masque le header X-Powered-By: Express
   noSniff: true, // X-Content-Type-Options: nosniff
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-  hsts: {
-    maxAge: 15552000, // 180 jours
-    includeSubDomains: true,
-  },
+  hsts: false, // Désactivé en dev/proxy HTTP local pour éviter les avertissements HSTS sur IP
 });
