@@ -162,6 +162,75 @@ export interface Materiel {
   image?: string;
 }
 
+// =========================================================================
+// MODÈLE COMPOSANT & CONSOMMABLES (Lié à un Matériel)
+// =========================================================================
+
+export type CapaciteType = 'grammage' | 'litrage';
+export type CapaciteUniteGrammage = 'g' | 'kg';
+export type CapaciteUniteLitrage = 'l' | 'cl';
+export type CapaciteUnite = CapaciteUniteGrammage | CapaciteUniteLitrage;
+export type TauxUtilisationComposant = '0%' | '25%' | '50%' | '75%' | '100%';
+
+export interface Composant {
+  id: string;
+  REF_composant: string; // Référence unique saisie par le responsable IT
+  nom: string;
+  id_Materiel: string; // Matériel informatique lié
+  materielDesignation?: string;
+  materielReference?: string;
+  capaciteType: CapaciteType; // 'grammage' ou 'litrage'
+  capaciteUnite: CapaciteUnite; // si grammage -> 'g' | 'kg', si litrage -> 'l' | 'cl'
+  capaciteValeur: number;
+  utilisation: TauxUtilisationComposant; // "0%", "25%", "50%", "75%", "100%"
+  enStock?: boolean; // Règle métier : true uniquement si utilisation === '0%', sinon stock - 1
+  remarques?: string;
+  dateEntree?: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Synthèse dynamique des stocks (non stocké en base, calculé pour affichage et stats)
+export interface StockGroupeItem {
+  idGroupe: string;
+  nomGroupe: string;
+  totalMateriels: number;
+  enStock: number; // Matériels disponibles en stock (statut === 'En stock' ou pas d'affectation)
+  enService: number; // Matériels en service
+  enPanne: number; // Matériels en panne ou maintenance
+  composantsAssociesCount: number;
+  composantsEnStock: number; // Composants avec utilisation 0%
+  composantsEnService: number; // Composants avec utilisation 25%, 50%, 75%
+  composantsEpuises: number; // Composants avec utilisation 100%
+}
+
+export interface StockComposantsSummary {
+  totalComposants: number;
+  enStock: number; // 0%
+  enCours: number; // 25%, 50%, 75% (sortis du stock)
+  epuises: number; // 100% (consommés)
+  parType: {
+    grammage: { total: number; enStock: number; enCours: number };
+    litrage: { total: number; enStock: number; enCours: number };
+  };
+  parUtilisation: Record<'0%' | '25%' | '50%' | '75%' | '100%', number>;
+}
+
+export interface StockGlobalSummary {
+  totalMateriels: number;
+  materielsEnStock: number;
+  materielsEnService: number;
+  materielsEnPanne: number;
+  totalComposants: number;
+  composantsEnStock: number; // 0%
+  composantsSortisDuStock: number; // 25%, 50%, 75%, 100%
+  stockGlobalCalcule: number; // Total articles physiques disponibles en stock (materielsEnStock + composantsEnStock)
+  tauxDisponibiliteGlobal: number; // En pourcentage
+  groupesStock: StockGroupeItem[];
+  composantsSummary: StockComposantsSummary;
+}
+
 export interface PersonnelActifItem {
   id: string;
   beneficiaire: string;
@@ -263,6 +332,10 @@ export interface DashboardStats {
     garantiesExpirantes60Jours: number;
     mttrMoyenHeures: number;
     mttrFormatte: string;
+    // Consolidated stock metrics (matériels + composants à 0%)
+    stockGlobalCalcule?: number;
+    composantsEnStock?: number;
+    totalComposants?: number;
     // Global support metrics
     totalReclamations?: number;
     reclamationsOuvertes?: number;
@@ -365,6 +438,8 @@ export type BackofficeTab =
   | 'messagerie'
   | 'utilisateurs'
   | 'materiels'
+  | 'composants'
+  | 'stocks'
   | 'factures'
   | 'emplacements'
   | 'fournisseurs'

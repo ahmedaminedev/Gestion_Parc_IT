@@ -121,7 +121,9 @@ export const BackofficeShell: React.FC<BackofficeShellProps> = ({ onLogout }) =>
             {activeBackofficeTab === 'reclamations' && <ReclamationsPage />}
             {activeBackofficeTab === 'messagerie' && <MessagesPage />}
             {activeBackofficeTab === 'utilisateurs' && <UsersPage />}
-            {activeBackofficeTab === 'materiels' && <MaterielsPage />}
+            {activeBackofficeTab === 'materiels' && <MaterielsPage initialTab="materiels" />}
+            {activeBackofficeTab === 'composants' && <MaterielsPage initialTab="composants" />}
+            {activeBackofficeTab === 'stocks' && <MaterielsPage initialTab="stocks" />}
             {activeBackofficeTab === 'factures' && <FacturesPage />}
             {activeBackofficeTab === 'emplacements' && <EmplacementsPage />}
             {activeBackofficeTab === 'fournisseurs' && <FournisseursPage />}

@@ -8,6 +8,7 @@ import { Emplacement } from '../models/Emplacement';
 import { GroupeMateriel } from '../models/GroupeMateriel';
 import { GroupeEmplacement } from '../models/GroupeEmplacement';
 import { Reclamation } from '../models/Reclamation';
+import { Composant } from '../models/Composant';
 
 const PALETTE_COLORS = [
   '#0f172a', // Ordinateurs / Slate 900
@@ -35,6 +36,7 @@ export async function getDashboardStats(req: any, res: Response) {
       groupesMat,
       _groupesEmp,
       reclamations,
+      composants,
     ] = await Promise.all([
       Materiel.find().lean(),
       User.find().lean(),
@@ -45,6 +47,7 @@ export async function getDashboardStats(req: any, res: Response) {
       GroupeMateriel.find().lean(),
       GroupeEmplacement.find().lean(),
       Reclamation.find().sort({ createdAt: -1 }).lean(),
+      Composant.find().lean(),
     ]);
 
     // Map helper lookups
@@ -154,6 +157,17 @@ export async function getDashboardStats(req: any, res: Response) {
     const totalEmplacementsCount = emplacements.length;
     const totalFournisseursCount = fournisseurs.length;
 
+    // --- MÉTROLOGIE COMPOSANTS & STOCK GLOBAL (Dynamique, non stocké en base) ---
+    const totalComposants = (composants || []).length;
+    const composantsEnStock = (composants || []).filter((c: any) => c.utilisation === '0%').length;
+    const composantsSortisDuStock = (composants || []).filter((c: any) => c.utilisation !== '0%').length;
+    const composantsEpuises = (composants || []).filter((c: any) => c.utilisation === '100%').length;
+    const stockGlobalCalcule = materielsEnStock + composantsEnStock;
+    const totalArticlesPhysiques = totalMateriels + totalComposants;
+    const tauxDisponibiliteGlobal = totalArticlesPhysiques > 0
+      ? Number(((stockGlobalCalcule / totalArticlesPhysiques) * 100).toFixed(1))
+      : 100;
+
     const metrics = {
       totalMateriels,
       totalUsers,
@@ -168,6 +182,14 @@ export async function getDashboardStats(req: any, res: Response) {
       tauxDisponibiliteFormatte: `${tauxDisponibilite}%`,
       materielsEnStock,
       materielsEnPanneTotal,
+      // Stocks & Composants
+      totalComposants,
+      composantsEnStock,
+      composantsSortisDuStock,
+      composantsEpuises,
+      stockGlobalCalcule,
+      tauxDisponibiliteGlobal,
+      tauxDisponibiliteGlobalFormatte: `${tauxDisponibiliteGlobal}%`,
       ticketsUrgentsOuverts,
       garantiesExpirantes60Jours,
       mttrMoyenHeures,
@@ -562,6 +584,46 @@ export async function getDashboardStats(req: any, res: Response) {
       userMateriels: userMateriels.slice(0, 5),
     };
 
+    // -------------------------------------------------------------
+    // Stock par Groupe et Composants (pour Stats et Affichage DSI)
+    // -------------------------------------------------------------
+    const groupesStock = groupesMat.map((g: any) => {
+      const gIdStr = String(g._id);
+      const gCustomId = g.id ? String(g.id) : '';
+      const matsDuGroupe = materiels.filter((m: any) => {
+        const mGId = String(m.id_GroupeMateriel || '');
+        return mGId === gIdStr || (gCustomId && mGId === gCustomId);
+      });
+      const matIds = matsDuGroupe.map((m: any) => [String(m._id), m.id ? String(m.id) : '']).flat().filter(Boolean);
+      const compDuGroupe = (composants || []).filter((c: any) => matIds.includes(String(c.id_Materiel || '')));
+
+      return {
+        idGroupe: gIdStr,
+        nomGroupe: g.nom || g.Groupe || 'Groupe',
+        totalMateriels: matsDuGroupe.length,
+        enStock: matsDuGroupe.filter((m: any) => m.statut === 'En stock' || !m.id_Beneficiaire).length,
+        enService: matsDuGroupe.filter((m: any) => m.statut === 'En service').length,
+        enPanne: matsDuGroupe.filter((m: any) => m.statut === 'En panne' || m.statut === 'Hors service').length,
+        composantsAssociesCount: compDuGroupe.length,
+        composantsEnStock: compDuGroupe.filter((c: any) => c.utilisation === '0%').length,
+        composantsEnService: compDuGroupe.filter((c: any) => ['25%', '50%', '75%'].includes(c.utilisation)).length,
+        composantsEpuises: compDuGroupe.filter((c: any) => c.utilisation === '100%').length,
+      };
+    });
+
+    const stockSummary = {
+      totalMateriels,
+      materielsEnStock,
+      materielsEnService,
+      materielsEnPanne: materielsEnPanneTotal,
+      totalComposants,
+      composantsEnStock,
+      composantsSortisDuStock,
+      stockGlobalCalcule,
+      tauxDisponibiliteGlobal,
+      groupesStock,
+    };
+
     res.json({
       metrics,
       pieData,
@@ -578,6 +640,8 @@ export async function getDashboardStats(req: any, res: Response) {
       userStats,
       alerts,
       totalCategoryCount: totalMateriels,
+      groupesStock,
+      stockSummary,
     });
   } catch (err: any) {
     console.error('Error computing dashboard statistics:', err);

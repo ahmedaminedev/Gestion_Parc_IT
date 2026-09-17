@@ -766,10 +766,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
           </div>
         </div>
 
-        {/* KPI 3: Matériels Disponibles en Stock */}
+        {/* KPI 3: Stock IT & Composants Consolidé */}
         <div
           id="kpi-stock-disponible"
-          onClick={() => onNavigateTab('materiels')}
+          onClick={() => onNavigateTab('composants')}
           className="bg-white p-5 rounded-2xl border border-gray-100 shadow-2xs hover:shadow-md transition cursor-pointer group relative min-w-0 flex flex-col justify-between"
         >
           <div>
@@ -779,7 +779,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <span className="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg border border-blue-100 whitespace-nowrap">
-                  Prêt affectation
+                  Stock Global
                 </span>
                 <button
                   type="button"
@@ -794,15 +794,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
                 </button>
               </div>
             </div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Stock & Réserve IT</p>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-3 truncate">Stock Global Consolidé</p>
             <div className="flex items-baseline gap-2 mt-0.5 min-w-0">
-              <span className="text-2xl font-black text-gray-900">{metrics.materielsEnStock}</span>
-              <span className="text-xs text-gray-500 font-medium truncate">équipements dispo</span>
+              <span className="text-2xl font-black text-gray-900">
+                {metrics.stockGlobalCalcule ?? (metrics.materielsEnStock + (metrics.composantsEnStock || 0))}
+              </span>
+              <span className="text-xs text-gray-500 font-medium truncate">unités en réserve</span>
             </div>
           </div>
           <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
-            <span className="text-gray-500">Garanties actives</span>
-            <span className="text-purple-600 font-bold">{metrics.totalGarantiesActives} sous garantie</span>
+            <span className="text-gray-500">Matériels : <strong>{metrics.materielsEnStock}</strong></span>
+            <span className="text-purple-600 font-bold">Composants (0%) : {metrics.composantsEnStock || 0}</span>
           </div>
         </div>
 

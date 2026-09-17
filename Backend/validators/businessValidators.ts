@@ -7,6 +7,7 @@ import { Emplacement } from '../models/Emplacement';
 import { GroupeEmplacement } from '../models/GroupeEmplacement';
 import { User } from '../models/User';
 import { Role } from '../models/Role';
+import { Composant } from '../models/Composant';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -961,6 +962,151 @@ export async function canDeleteRole(id: string): Promise<ValidationResult> {
     };
   }
 
+  return { isValid: true };
+}
+
+// =========================================================================
+// 8. CONTRÔLE DE SAISIE & GESTION DE STOCK : MODÈLE COMPOSANT
+// =========================================================================
+
+/**
+ * Règle métier de stockage :
+ * Le composant appartient au stockage dans le cas 0%, sinon stock - 1 (consommé ou en cours d'utilisation).
+ */
+export function isComposantEnStock(utilisation?: string): boolean {
+  return utilisation === '0%';
+}
+
+export async function validateComposantData(
+  data: any,
+  existingId?: string
+): Promise<ValidationResult> {
+  const {
+    REF_composant,
+    nom,
+    id_Materiel,
+    capaciteType,
+    capaciteUnite,
+    capaciteValeur,
+    utilisation,
+  } = data;
+
+  // 1. Référence Composant (REF_composant) saisie par le responsable IT : Obligatoire & Unique
+  if (!REF_composant || typeof REF_composant !== 'string' || !REF_composant.trim()) {
+    return {
+      isValid: false,
+      message: 'La référence du composant (REF_composant) est obligatoire et doit être renseignée par le Responsable IT.',
+      field: 'REF_composant',
+    };
+  }
+
+  const cleanRef = REF_composant.trim();
+  const exclusion = getExclusionFilter(existingId);
+  const existingByRef = await Composant.findOne({
+    REF_composant: { $regex: new RegExp(`^${escapeRegex(cleanRef)}$`, 'i') },
+    ...exclusion,
+  });
+
+  if (existingByRef) {
+    return {
+      isValid: false,
+      message: `La référence de composant "${cleanRef}" existe déjà dans le système. Chaque composant doit avoir une référence unique.`,
+      field: 'REF_composant',
+    };
+  }
+
+  // 2. Nom / Désignation du composant
+  if (!nom || typeof nom !== 'string' || !nom.trim()) {
+    return {
+      isValid: false,
+      message: 'Le nom ou la désignation du composant est obligatoire.',
+      field: 'nom',
+    };
+  }
+
+  // 3. Liaison avec le modèle Matériel
+  if (!id_Materiel || typeof id_Materiel !== 'string' || !id_Materiel.trim()) {
+    return {
+      isValid: false,
+      message: 'Le composant doit impérativement être lié à un matériel informatique.',
+      field: 'id_Materiel',
+    };
+  }
+
+  const materielLie = await safeFindDoc(Materiel, id_Materiel);
+  if (!materielLie) {
+    return {
+      isValid: false,
+      message: 'Le matériel sélectionné pour ce composant est introuvable dans la base de données.',
+      field: 'id_Materiel',
+    };
+  }
+
+  // 4. Capacité : type enumerate ('grammage' | 'litrage')
+  if (!capaciteType || !['grammage', 'litrage'].includes(capaciteType)) {
+    return {
+      isValid: false,
+      message: 'Le type de capacité doit être soit "grammage" soit "litrage".',
+      field: 'capaciteType',
+    };
+  }
+
+  // 5. Unité de capacité conditionnelle :
+  // - En cas de sélection grammage -> g ou kg
+  // - En cas de sélection litrage -> l ou cl
+  if (!capaciteUnite) {
+    return {
+      isValid: false,
+      message: 'L\'unité de mesure de la capacité est obligatoire.',
+      field: 'capaciteUnite',
+    };
+  }
+
+  if (capaciteType === 'grammage') {
+    if (!['g', 'kg'].includes(capaciteUnite)) {
+      return {
+        isValid: false,
+        message: 'Pour une capacité en grammage, l\'unité doit être obligatoirement "g" (grammes) ou "kg" (kilogrammes).',
+        field: 'capaciteUnite',
+      };
+    }
+  } else if (capaciteType === 'litrage') {
+    if (!['l', 'cl'].includes(capaciteUnite)) {
+      return {
+        isValid: false,
+        message: 'Pour une capacité en litrage, l\'unité doit être obligatoirement "l" (litres) ou "cl" (centilitres).',
+        field: 'capaciteUnite',
+      };
+    }
+  }
+
+  // 6. Valeur numérique de capacité
+  if (capaciteValeur === undefined || capaciteValeur === null || isNaN(Number(capaciteValeur)) || Number(capaciteValeur) <= 0) {
+    return {
+      isValid: false,
+      message: 'La valeur de capacité doit être un nombre strictement positif (> 0).',
+      field: 'capaciteValeur',
+    };
+  }
+
+  // 7. Utilisation : enumerate "0%", "25%", "50%", "75%", "100%"
+  const TAUX_UTILISATION_AUTORISES = ['0%', '25%', '50%', '75%', '100%'];
+  if (!utilisation || !TAUX_UTILISATION_AUTORISES.includes(utilisation)) {
+    return {
+      isValid: false,
+      message: 'Le niveau d\'utilisation doit être l\'une des valeurs exactes : "0%", "25%", "50%", "75%", "100%".',
+      field: 'utilisation',
+    };
+  }
+
+  return { isValid: true };
+}
+
+export async function canDeleteComposant(id: string): Promise<ValidationResult> {
+  const comp = await safeFindDoc(Composant, id) || await Composant.findById(id);
+  if (!comp) {
+    return { isValid: false, message: 'Composant introuvable.' };
+  }
   return { isValid: true };
 }
 

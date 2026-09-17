@@ -12,6 +12,7 @@ import { Reclamation } from '../models/Reclamation';
 import { EmailLog } from '../models/EmailLog';
 import { Message } from '../models/Message';
 import { Conversation } from '../models/Conversation';
+import { Composant } from '../models/Composant';
 import {
   sendWelcomeEmail,
   sendAccountUpdatedEmail,
@@ -33,6 +34,9 @@ import {
   validateGroupeEmplacementData,
   validateUserData,
   validateReclamationData,
+  validateComposantData,
+  canDeleteComposant,
+  isComposantEnStock,
   canDeleteGroupeMateriel,
   canDeleteFacture,
   canDeleteFournisseur,
@@ -619,12 +623,217 @@ router.delete('/materiels/:id', async (req, res) => {
       { $pull: { materielsConcernesIds: { $in: targetIds } } }
     );
 
-    // 2. Supprimer définitivement le document matériel
+    // 2. Supprimer les composants liés à ce matériel
+    await Composant.deleteMany({ id_Materiel: { $in: targetIds } });
+
+    // 3. Supprimer définitivement le document matériel
     await Materiel.findByIdAndDelete(mat._id);
 
     res.json({
       message: `Matériel "${mat.designation}" (Réf: ${mat.reference}) supprimé avec succès.`,
       id: req.params.id,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ================= COMPOSANTS =================
+router.get('/composants', async (req, res) => {
+  try {
+    const filter: any = {};
+    if (req.query.id_Materiel) {
+      filter.id_Materiel = req.query.id_Materiel;
+    }
+    const items = await Composant.find(filter).sort({ createdAt: -1 });
+
+    // Enrichir avec les infos du matériel lié
+    const materiels = await Materiel.find().lean();
+    const enriched = items.map((c: any) => {
+      const obj = c.toJSON ? c.toJSON() : c;
+      const mat = materiels.find(
+        (m: any) => String(m._id) === String(obj.id_Materiel) || String(m.id) === String(obj.id_Materiel)
+      );
+      return {
+        ...obj,
+        materielDesignation: mat ? mat.designation : 'Matériel non spécifié',
+        materielReference: mat ? mat.reference : '',
+      };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/composants/:id', async (req, res) => {
+  try {
+    const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
+    if (!comp) {
+      return res.status(404).json({ message: 'Composant introuvable.' });
+    }
+    res.json(comp);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/composants', async (req, res) => {
+  try {
+    const validation = await validateComposantData(req.body);
+    if (!validation.isValid) {
+      return res.status(400).json({ message: validation.message, field: validation.field });
+    }
+    const newItem = new Composant(req.body);
+    await newItem.save();
+    res.status(201).json(newItem);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.put('/composants/:id', async (req, res) => {
+  try {
+    const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
+    if (!comp) {
+      return res.status(404).json({ message: 'Composant introuvable.' });
+    }
+
+    const validation = await validateComposantData(req.body, String(comp._id));
+    if (!validation.isValid) {
+      return res.status(400).json({ message: validation.message, field: validation.field });
+    }
+
+    const updated = await Composant.findByIdAndUpdate(comp._id, req.body, { new: true });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.delete('/composants/:id', async (req, res) => {
+  try {
+    const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
+    if (!comp) {
+      return res.status(404).json({ message: 'Composant introuvable.' });
+    }
+
+    const deleteCheck = await canDeleteComposant(String(comp._id));
+    if (!deleteCheck.isValid) {
+      return res.status(400).json({ message: deleteCheck.message });
+    }
+
+    await Composant.findByIdAndDelete(comp._id);
+    res.json({
+      message: `Composant "${comp.nom}" (Réf: ${comp.REF_composant}) supprimé avec succès.`,
+      id: req.params.id,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ================= GESTION & SYNTHÈSE DES STOCKS =================
+// Calcul dynamique non persisté dans la base, pour affichage et statistiques
+router.get('/stocks/summary', async (_req, res) => {
+  try {
+    const [materiels, groupes, composants] = await Promise.all([
+      Materiel.find().lean(),
+      GroupeMateriel.find().lean(),
+      Composant.find().lean(),
+    ]);
+
+    // 1. Stock par Groupe Matériel
+    const groupesStock = groupes.map((g: any) => {
+      const gIdStr = String(g._id);
+      const gCustomId = g.id ? String(g.id) : '';
+
+      const matsDuGroupe = materiels.filter((m: any) => {
+        const mGId = String(m.id_GroupeMateriel || '');
+        return mGId === gIdStr || (gCustomId && mGId === gCustomId);
+      });
+
+      const matIds = matsDuGroupe.map((m: any) => [String(m._id), m.id ? String(m.id) : '']).flat().filter(Boolean);
+
+      const composantsDuGroupe = composants.filter((c: any) => {
+        const cMId = String(c.id_Materiel || '');
+        return matIds.includes(cMId);
+      });
+
+      const enStockMats = matsDuGroupe.filter((m: any) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;
+      const enServiceMats = matsDuGroupe.filter((m: any) => m.statut === 'En service').length;
+      const enPanneMats = matsDuGroupe.filter((m: any) => m.statut === 'En panne' || m.statut === 'Hors service').length;
+
+      const compEnStock = composantsDuGroupe.filter((c: any) => isComposantEnStock(c.utilisation)).length;
+      const compEnService = composantsDuGroupe.filter((c: any) => ['25%', '50%', '75%'].includes(c.utilisation)).length;
+      const compEpuises = composantsDuGroupe.filter((c: any) => c.utilisation === '100%').length;
+
+      return {
+        idGroupe: gIdStr,
+        nomGroupe: g.nom || g.Groupe || 'Groupe',
+        totalMateriels: matsDuGroupe.length,
+        enStock: enStockMats,
+        enService: enServiceMats,
+        enPanne: enPanneMats,
+        composantsAssociesCount: composantsDuGroupe.length,
+        composantsEnStock: compEnStock,
+        composantsEnService: compEnService,
+        composantsEpuises: compEpuises,
+      };
+    });
+
+    // 2. Synthèse des Composants (Règle : 0% = stock, sinon stock - 1)
+    const compTotal = composants.length;
+    const compEnStock = composants.filter((c: any) => isComposantEnStock(c.utilisation)).length;
+    const compEnCours = composants.filter((c: any) => ['25%', '50%', '75%'].includes(c.utilisation)).length;
+    const compEpuises = composants.filter((c: any) => c.utilisation === '100%').length;
+
+    const compGrammage = composants.filter((c: any) => c.capaciteType === 'grammage');
+    const compLitrage = composants.filter((c: any) => c.capaciteType === 'litrage');
+
+    const composantsSummary = {
+      totalComposants: compTotal,
+      enStock: compEnStock,
+      enCours: compEnCours,
+      epuises: compEpuises,
+      parType: {
+        grammage: {
+          total: compGrammage.length,
+          enStock: compGrammage.filter((c: any) => isComposantEnStock(c.utilisation)).length,
+          enCours: compGrammage.filter((c: any) => c.utilisation !== '0%').length,
+        },
+        litrage: {
+          total: compLitrage.length,
+          enStock: compLitrage.filter((c: any) => isComposantEnStock(c.utilisation)).length,
+          enCours: compLitrage.filter((c: any) => c.utilisation !== '0%').length,
+        },
+      },
+    };
+
+    // 3. Stock Global Calculé (Matériels en stock + Composants en stock 0%)
+    const materielsEnStock = materiels.filter((m: any) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;
+    const materielsEnService = materiels.filter((m: any) => m.statut === 'En service').length;
+    const materielsEnPanne = materiels.filter((m: any) => m.statut === 'En panne' || m.statut === 'Hors service').length;
+
+    const stockGlobalCalcule = materielsEnStock + compEnStock;
+    const totalArticles = materiels.length + compTotal;
+    const tauxDisponibiliteGlobal = totalArticles > 0
+      ? Number(((stockGlobalCalcule / totalArticles) * 100).toFixed(1))
+      : 100;
+
+    res.json({
+      totalMateriels: materiels.length,
+      materielsEnStock,
+      materielsEnService,
+      materielsEnPanne,
+      totalComposants: compTotal,
+      composantsEnStock: compEnStock,
+      composantsSortisDuStock: compEnCours + compEpuises,
+      stockGlobalCalcule,
+      tauxDisponibiliteGlobal,
+      groupesStock,
+      composantsSummary,
     });
   } catch (err: any) {
     res.status(500).json({ message: err.message });

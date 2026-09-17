@@ -6,6 +6,10 @@ import {
   Emplacement,
   Beneficiaire,
   Materiel,
+  Composant,
+  StockGlobalSummary,
+  StockGroupeItem,
+  StockComposantsSummary,
   DashboardStats,
   Role,
   Reclamation,
@@ -22,6 +26,7 @@ class ITParkService {
   private emplacements: Emplacement[] = [];
   private beneficiaires: Beneficiaire[] = [];
   private materiels: Materiel[] = [];
+  private composants: Composant[] = [];
   private reclamations: Reclamation[] = [];
   private emailLogs: EmailLog[] = [];
   private dashboardStats: DashboardStats | null = null;
@@ -53,6 +58,7 @@ class ITParkService {
     this.emplacements = [];
     this.beneficiaires = [];
     this.materiels = [];
+    this.composants = [];
     this.reclamations = [];
     this.emailLogs = [];
     this.dashboardStats = null;
@@ -138,6 +144,31 @@ class ITParkService {
             id_Emplacement: m.id_Emplacement || '',
             id_Beneficiaire: m.id_Beneficiaire || '',
             image: m.image,
+          }));
+        }
+      }
+
+      // Sync Composants from MongoDB
+      const resComp = await authService.fetchWithAuth('/api/composants');
+      if (resComp.ok) {
+        const comps = await resComp.json();
+        if (Array.isArray(comps)) {
+          this.composants = comps.map((c: any) => ({
+            id: c.id || c._id,
+            REF_composant: c.REF_composant,
+            nom: c.nom,
+            id_Materiel: c.id_Materiel,
+            materielDesignation: c.materielDesignation,
+            materielReference: c.materielReference,
+            capaciteType: c.capaciteType,
+            capaciteUnite: c.capaciteUnite,
+            capaciteValeur: Number(c.capaciteValeur || 0),
+            utilisation: c.utilisation || '0%',
+            enStock: c.utilisation === '0%',
+            dateEntree: c.dateEntree,
+            description: c.description || '',
+            createdAt: c.createdAt,
+            updatedAt: c.updatedAt,
           }));
         }
       }
@@ -944,6 +975,215 @@ class ITParkService {
     } catch (e: any) {
       return { success: false, message: e.message || 'Erreur réseau ou serveur' };
     }
+  }
+
+  // --- COMPOSANTS CRUD ON MONGODB & GESTION DES STOCKS ---
+  public getComposants(): Composant[] {
+    return [...this.composants];
+  }
+
+  public getComposantsByMateriel(id_Materiel: string): Composant[] {
+    return this.composants.filter((c) => c.id_Materiel === id_Materiel);
+  }
+
+  public setLocalForTesting(data: {
+    materiels?: Materiel[];
+    groupes?: GroupeMateriel[];
+    composants?: Composant[];
+  }): void {
+    if (data.materiels) this.materiels = [...data.materiels];
+    if (data.groupes) this.groupesMateriel = [...data.groupes];
+    if (data.composants) this.composants = [...data.composants];
+    this.notify();
+  }
+
+  public isComposantEnStock(utilisation?: string): boolean {
+    return utilisation === '0%';
+  }
+
+  public async saveComposant(comp: Partial<Composant> & { unite?: any }): Promise<{ success: boolean; message?: string; field?: string; data?: Composant }> {
+    try {
+      let res: Response | null = null;
+      if (comp.id && this.composants.some((c) => c.id === comp.id)) {
+        res = await authService.fetchWithAuth(`/api/composants/${comp.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(comp),
+        });
+      } else {
+        res = await authService.fetchWithAuth('/api/composants', {
+          method: 'POST',
+          body: JSON.stringify(comp),
+        });
+      }
+      if (res && res.ok) {
+        const data = await res.json();
+        await this.syncFromBackend();
+        return { success: true, data };
+      }
+      if (res && !res.ok) {
+        const data = await res.json();
+        return { success: false, message: data.message || "Erreur lors de l'enregistrement du composant", field: data.field };
+      }
+    } catch (e: any) {
+      // Local fallback for offline/testing mode
+    }
+
+    // Local fallback
+    const cleanRef = (comp.REF_composant || '').trim();
+    if (!cleanRef) {
+      return { success: false, message: 'La référence du composant est obligatoire', field: 'REF_composant' };
+    }
+    const dup = this.composants.find((c) => c.id !== comp.id && c.REF_composant.toLowerCase() === cleanRef.toLowerCase());
+    if (dup) {
+      return { success: false, message: `La référence "${cleanRef}" existe déjà.`, field: 'REF_composant' };
+    }
+
+    const saved: Composant = {
+      id: comp.id || `COMP-${Date.now()}`,
+      REF_composant: cleanRef,
+      nom: (comp.nom || cleanRef).trim(),
+      id_Materiel: comp.id_Materiel || '',
+      capaciteType: comp.capaciteType || 'grammage',
+      capaciteValeur: Number(comp.capaciteValeur) || 0,
+      capaciteUnite: (comp.capaciteUnite || comp.unite || 'g') as any,
+      utilisation: comp.utilisation || '0%',
+      remarques: comp.remarques,
+    };
+
+    const idx = comp.id ? this.composants.findIndex((c) => c.id === comp.id) : -1;
+    if (idx >= 0) {
+      this.composants[idx] = saved;
+    } else {
+      this.composants.push(saved);
+    }
+    this.notify();
+    return { success: true, data: saved };
+  }
+
+  public async deleteComposant(id: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await authService.fetchWithAuth(`/api/composants/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await this.syncFromBackend();
+        return { success: true };
+      }
+    } catch (e: any) {
+      // Local fallback
+    }
+    this.composants = this.composants.filter((c) => c.id !== id);
+    this.notify();
+    return { success: true };
+  }
+
+  /**
+   * Calcul dynamique et pur du stock global, par groupe matériel et par composant.
+   * "parrapport au stockage je veux que chaque groupe materiel a son stock et composant sont leurs stocks et il y a le stock globale (pas dans la base dans l'affichage , stats )"
+   */
+  public getStocksSummary(): StockGlobalSummary {
+    const materiels = this.materiels;
+    const groupes = this.groupesMateriel;
+    const composants = this.composants;
+
+    // 1. Stock par Groupe Matériel
+    const groupesStock: StockGroupeItem[] = groupes.map((g) => {
+      const matsDuGroupe = materiels.filter((m) => m.id_GroupeMateriel === g.id);
+      const matIds = matsDuGroupe.map((m) => m.id);
+
+      const compDuGroupe = composants.filter((c) => matIds.includes(c.id_Materiel));
+
+      const enStock = matsDuGroupe.filter((m) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;
+      const enService = matsDuGroupe.filter((m) => m.statut === 'En service').length;
+      const enPanne = matsDuGroupe.filter((m) => m.statut === 'En panne' || m.statut === 'Hors service').length;
+
+      const compEnStock = compDuGroupe.filter((c) => c.utilisation === '0%').length;
+      const compEnService = compDuGroupe.filter((c) => ['25%', '50%', '75%'].includes(c.utilisation)).length;
+      const compEpuises = compDuGroupe.filter((c) => c.utilisation === '100%').length;
+
+      return {
+        idGroupe: g.id,
+        nomGroupe: g.Groupe || 'Groupe',
+        totalMateriels: matsDuGroupe.length,
+        enStock,
+        enService,
+        enPanne,
+        composantsAssociesCount: compDuGroupe.length,
+        composantsEnStock: compEnStock,
+        composantsEnService: compEnService,
+        composantsEpuises: compEpuises,
+      };
+    });
+
+    // 2. Synthèse des Composants
+    const compTotal = composants.length;
+    const compEnStock = composants.filter((c) => c.utilisation === '0%').length;
+    const compEnCours = composants.filter((c) => ['25%', '50%', '75%'].includes(c.utilisation)).length;
+    const compEpuises = composants.filter((c) => c.utilisation === '100%').length;
+
+    const compGrammage = composants.filter((c) => c.capaciteType === 'grammage');
+    const compLitrage = composants.filter((c) => c.capaciteType === 'litrage');
+
+    const composantsSummary: StockComposantsSummary = {
+      totalComposants: compTotal,
+      enStock: compEnStock,
+      enCours: compEnCours,
+      epuises: compEpuises,
+      parType: {
+        grammage: {
+          total: compGrammage.length,
+          enStock: compGrammage.filter((c) => c.utilisation === '0%').length,
+          enCours: compGrammage.filter((c) => c.utilisation !== '0%').length,
+        },
+        litrage: {
+          total: compLitrage.length,
+          enStock: compLitrage.filter((c) => c.utilisation === '0%').length,
+          enCours: compLitrage.filter((c) => c.utilisation !== '0%').length,
+        },
+      },
+      parUtilisation: {
+        '0%': compEnStock,
+        '25%': composants.filter((c) => c.utilisation === '25%').length,
+        '50%': composants.filter((c) => c.utilisation === '50%').length,
+        '75%': composants.filter((c) => c.utilisation === '75%').length,
+        '100%': compEpuises,
+      },
+    };
+
+    // 3. Stock Global
+    const materielsEnStock = materiels.filter((m) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;
+    const materielsEnService = materiels.filter((m) => m.statut === 'En service').length;
+    const materielsEnPanne = materiels.filter((m) => m.statut === 'En panne' || m.statut === 'Hors service').length;
+
+    const stockGlobalCalcule = materielsEnStock + compEnStock;
+    const totalArticles = materiels.length + compTotal;
+    const tauxDisponibiliteGlobal = totalArticles > 0
+      ? Number(((stockGlobalCalcule / totalArticles) * 100).toFixed(1))
+      : 100;
+
+    return {
+      totalMateriels: materiels.length,
+      materielsEnStock,
+      materielsEnService,
+      materielsEnPanne,
+      totalComposants: compTotal,
+      composantsEnStock: compEnStock,
+      composantsSortisDuStock: compEnCours + compEpuises,
+      stockGlobalCalcule,
+      tauxDisponibiliteGlobal,
+      groupesStock,
+      composantsSummary,
+    };
+  }
+
+  public async fetchStocksSummary(): Promise<StockGlobalSummary | null> {
+    try {
+      const res = await authService.fetchWithAuth('/api/stocks/summary');
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Erreur récupération /api/stocks/summary, calcul local de repli:', e);
+    }
+    return this.getStocksSummary();
   }
 
   // --- RÉCLAMATIONS CRUD & SUPPORT ---

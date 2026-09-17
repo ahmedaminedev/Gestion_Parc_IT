@@ -12,7 +12,9 @@ import {
   User,
   Package,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Cpu,
+  Boxes
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import { authService, AuthUser } from '../../services/authService';
@@ -23,17 +25,25 @@ import {
   Fournisseur,
   GroupeMateriel,
   Materiel,
+  Composant,
   StatutMateriel
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal, ConfirmModalItem } from '../common/CustomConfirmModal';
+import { ComposantsSection } from './ComposantsSection';
+import { StocksSection } from './StocksSection';
 
-export const MaterielsPage: React.FC = () => {
+interface MaterielsPageProps {
+  initialTab?: 'materiels' | 'groupes' | 'composants' | 'stocks';
+}
+
+export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'materiels' }) => {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(authService.getUser());
-  const [activeTab, setActiveTab] = useState<'materiels' | 'groupes'>('materiels');
+  const [activeTab, setActiveTab] = useState<'materiels' | 'groupes' | 'composants' | 'stocks'>(initialTab);
 
   const [materiels, setMateriels] = useState<Materiel[]>(itParkService.getMateriels());
   const [groupes, setGroupes] = useState<GroupeMateriel[]>(itParkService.getGroupesMateriel());
+  const [composants, setComposants] = useState<Composant[]>(itParkService.getComposants());
   const [fournisseurs, setFournisseurs] = useState<Fournisseur[]>(itParkService.getFournisseurs());
   const [factures, setFactures] = useState<Facture[]>(itParkService.getFactures());
   const [emplacements, setEmplacements] = useState<Emplacement[]>(itParkService.getEmplacements());
@@ -41,10 +51,28 @@ export const MaterielsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
     const unsubAuth = authService.subscribe(() => {
       setCurrentUser(authService.getUser());
     });
-    return unsubAuth;
+    const unsubData = itParkService.subscribe(() => {
+      setMateriels(itParkService.getMateriels());
+      setGroupes(itParkService.getGroupesMateriel());
+      setComposants(itParkService.getComposants());
+      setFournisseurs(itParkService.getFournisseurs());
+      setFactures(itParkService.getFactures());
+      setEmplacements(itParkService.getEmplacements());
+      setBeneficiaires(itParkService.getBeneficiaires());
+    });
+    return () => {
+      unsubAuth();
+      unsubData();
+    };
   }, []);
 
   const isDSIAdmin = currentUser?.role === 'Responsable IT' || currentUser?.accesApp === 'GLOBAL_BACKOFFICE';
@@ -586,10 +614,10 @@ export const MaterielsPage: React.FC = () => {
 
       {/* Tabs (Only if DSI Admin) */}
       {isDSIAdmin && (
-        <div className="flex items-center gap-2 border-b border-gray-200">
+        <div className="flex items-center gap-2 border-b border-gray-200 overflow-x-auto">
           <button
             onClick={() => setActiveTab('materiels')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'materiels'
                 ? 'border-red-500 text-red-600 bg-red-50/50'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -601,7 +629,7 @@ export const MaterielsPage: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('groupes')}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'groupes'
                 ? 'border-red-500 text-red-600 bg-red-50/50'
                 : 'border-transparent text-gray-500 hover:text-gray-900'
@@ -609,6 +637,30 @@ export const MaterielsPage: React.FC = () => {
           >
             <Layers className="w-4 h-4" />
             <span>Groupes Matériel ({groupes.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('composants')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'composants'
+                ? 'border-red-500 text-red-600 bg-red-50/50'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Cpu className="w-4 h-4" />
+            <span>Composants IT & Consommables ({composants.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('stocks')}
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'stocks'
+                ? 'border-red-500 text-red-600 bg-red-50/50'
+                : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            <span>Stocks & Synthèse Globale</span>
           </button>
         </div>
       )}
@@ -893,6 +945,26 @@ export const MaterielsPage: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {/* TAB 3: COMPOSANTS IT & CONSOMMABLES */}
+      {activeTab === 'composants' && (
+        <ComposantsSection
+          isDSIAdmin={isDSIAdmin}
+          materiels={materiels}
+          composants={composants}
+          onRefresh={async () => {
+            await itParkService.syncFromBackend();
+          }}
+        />
+      )}
+
+      {/* TAB 4: GESTIONNAIRE DES STOCKS & SYNTHÈSE GLOBALE */}
+      {activeTab === 'stocks' && (
+        <StocksSection
+          onNavigateToComposants={() => setActiveTab('composants')}
+          onNavigateToMateriels={() => setActiveTab('materiels')}
+        />
       )}
 
       {/* Modal: Add/Edit Materiel with ALL UML attributes & relationships */}
