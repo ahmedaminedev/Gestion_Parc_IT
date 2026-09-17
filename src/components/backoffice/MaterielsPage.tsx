@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   ShieldCheck,
   Cpu,
-  Boxes
+  Boxes,
+  Droplets
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import { authService, AuthUser } from '../../services/authService';
@@ -32,6 +33,16 @@ import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal, ConfirmModalItem } from '../common/CustomConfirmModal';
 import { ComposantsSection } from './ComposantsSection';
 import { StocksSection } from './StocksSection';
+
+export interface MatFormComposantItem {
+  id?: string;
+  REF_composant: string;
+  nom: string;
+  capaciteType: 'grammage' | 'litrage';
+  capaciteValeur: number | '';
+  capaciteUnite: 'g' | 'kg' | 'l' | 'cl';
+  utilisation: '0%' | '25%' | '50%' | '75%' | '100%';
+}
 
 interface MaterielsPageProps {
   initialTab?: 'materiels' | 'groupes' | 'composants' | 'stocks';
@@ -109,6 +120,71 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
     id_Emplacement: '',
     id_Beneficiaire: '',
   });
+
+  // Optional Components / Consumables sub-form inside Materiel Modal (0, 1 or multiple components)
+  const [formComposants, setFormComposants] = useState<MatFormComposantItem[]>([]);
+
+  const handleAddFormComposant = (presetType?: 'litrage' | 'grammage') => {
+    const isPrinter = matForm.designation.toLowerCase().includes('imprim') ||
+                      matForm.designation.toLowerCase().includes('print') ||
+                      matForm.designation.toLowerCase().includes('traceur') ||
+                      matForm.designation.toLowerCase().includes('copieur');
+    const type = presetType || (isPrinter ? 'litrage' : 'grammage');
+
+    let defaultName = '';
+    let defaultVal = 100;
+    let defaultUnite: 'g' | 'kg' | 'l' | 'cl' = 'g';
+
+    if (type === 'litrage') {
+      defaultName = isPrinter ? "Liquide d'écriture (Encre)" : "Liquide / Consommable";
+      defaultVal = 250;
+      defaultUnite = 'cl';
+    } else {
+      defaultName = isPrinter ? "Poudre Toner" : "Composant";
+      defaultVal = 100;
+      defaultUnite = 'g';
+    }
+
+    setFormComposants(prev => [
+      ...prev,
+      {
+        REF_composant: 'COMP-' + Math.floor(1000 + Math.random() * 9000),
+        nom: defaultName,
+        capaciteType: type,
+        capaciteValeur: defaultVal,
+        capaciteUnite: defaultUnite,
+        utilisation: '0%',
+      }
+    ]);
+  };
+
+  const handleRemoveFormComposant = (index: number) => {
+    setFormComposants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateFormComposant = (index: number, updates: Partial<MatFormComposantItem>) => {
+    setFormComposants(prev => {
+      const updated = [...prev];
+      const current = updated[index];
+      if (!current) return prev;
+
+      let newUnite = updates.capaciteUnite !== undefined ? updates.capaciteUnite : current.capaciteUnite;
+      if (updates.capaciteType && updates.capaciteType !== current.capaciteType) {
+        if (updates.capaciteType === 'grammage' && newUnite !== 'g' && newUnite !== 'kg') {
+          newUnite = 'g';
+        } else if (updates.capaciteType === 'litrage' && newUnite !== 'l' && newUnite !== 'cl') {
+          newUnite = 'cl';
+        }
+      }
+
+      updated[index] = {
+        ...current,
+        ...updates,
+        capaciteUnite: newUnite,
+      };
+      return updated;
+    });
+  };
 
   // Modal State for GroupeMateriel
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
@@ -251,6 +327,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
   const handleOpenAddMat = () => {
     setEditingMat(null);
     setMatModalAlert(null);
+    setFormComposants([]);
     const defaultFrs = suppliersWithInvoices[0] || fournisseurs[0];
     const defaultInvoices = factures.filter(f => f.id_Fournisseur === defaultFrs?.id);
 
@@ -277,6 +354,19 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
   const handleOpenEditMat = (mat: Materiel) => {
     setEditingMat(mat);
     setMatModalAlert(null);
+
+    // Load components attached to this material
+    const existingComps = itParkService.getComposantsByMateriel(mat.id);
+    setFormComposants(existingComps.map(c => ({
+      id: c.id,
+      REF_composant: c.REF_composant,
+      nom: c.nom,
+      capaciteType: c.capaciteType,
+      capaciteValeur: c.capaciteValeur,
+      capaciteUnite: c.capaciteUnite,
+      utilisation: c.utilisation,
+    })));
+
     let typeAffectation: 'non_affecte' | 'personnel' | 'emplacement' = 'non_affecte';
     if (mat.id_Emplacement) {
       typeAffectation = 'emplacement';
@@ -312,6 +402,67 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
     setIsSaving(true);
 
     try {
+      // 1. Validation of associated components (if any)
+      if (formComposants.length > 0) {
+        const refSet = new Set<string>();
+        for (let i = 0; i < formComposants.length; i++) {
+          const c = formComposants[i];
+          const cRef = c.REF_composant.trim();
+          const cNom = c.nom.trim();
+
+          if (!cRef) {
+            setMatModalAlert({
+              type: 'error',
+              message: `Composant #${i + 1} : La référence du composant est obligatoire.`
+            });
+            setIsSaving(false);
+            return;
+          }
+          if (!cNom) {
+            setMatModalAlert({
+              type: 'error',
+              message: `Composant #${i + 1} (${cRef}) : Le nom / libellé du composant est obligatoire.`
+            });
+            setIsSaving(false);
+            return;
+          }
+          const val = Number(c.capaciteValeur);
+          if (!val || val <= 0 || isNaN(val)) {
+            setMatModalAlert({
+              type: 'error',
+              message: `Composant #${i + 1} (${cNom}) : La valeur de capacité doit être un nombre strictement positif (> 0).`
+            });
+            setIsSaving(false);
+            return;
+          }
+          if (c.capaciteType === 'grammage' && c.capaciteUnite !== 'g' && c.capaciteUnite !== 'kg') {
+            setMatModalAlert({
+              type: 'error',
+              message: `Composant #${i + 1} (${cNom}) : Pour le grammage, l'unité doit être "g" ou "kg".`
+            });
+            setIsSaving(false);
+            return;
+          }
+          if (c.capaciteType === 'litrage' && c.capaciteUnite !== 'l' && c.capaciteUnite !== 'cl') {
+            setMatModalAlert({
+              type: 'error',
+              message: `Composant #${i + 1} (${cNom}) : Pour le litrage, l'unité doit être "l" ou "cl".`
+            });
+            setIsSaving(false);
+            return;
+          }
+          if (refSet.has(cRef.toLowerCase())) {
+            setMatModalAlert({
+              type: 'error',
+              message: `La référence "${cRef}" est présente plusieurs fois dans la liste des composants.`
+            });
+            setIsSaving(false);
+            return;
+          }
+          refSet.add(cRef.toLowerCase());
+        }
+      }
+
       const isNonAffecte = matForm.typeAffectation === 'non_affecte';
       const isPersonnel = matForm.typeAffectation === 'personnel';
 
@@ -343,10 +494,37 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
         return;
       }
 
+      // 2. Persist associated components for this material
+      const oldComps = itParkService.getComposantsByMateriel(saved.id);
+      const keptIds: string[] = [];
+
+      for (const c of formComposants) {
+        const compId = c.id || ('comp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7));
+        keptIds.push(compId);
+        await itParkService.saveComposant({
+          id: compId,
+          REF_composant: c.REF_composant.trim(),
+          nom: c.nom.trim(),
+          capaciteType: c.capaciteType,
+          capaciteValeur: Number(c.capaciteValeur),
+          capaciteUnite: c.capaciteUnite,
+          utilisation: c.utilisation,
+          id_Materiel: saved.id,
+        });
+      }
+
+      // If existing components were detached/removed in this form, delete them
+      for (const oldC of oldComps) {
+        if (!keptIds.includes(oldC.id)) {
+          await itParkService.deleteComposant(oldC.id);
+        }
+      }
+
       setIsMatModalOpen(false);
+      const compCountMsg = formComposants.length > 0 ? ` avec ${formComposants.length} composant(s)` : '';
       setPageAlert({
         type: 'success',
-        message: result.message || (editingMat ? 'Matériel mis à jour avec succès.' : 'Matériel créé avec succès.')
+        message: result.message || (editingMat ? `Matériel mis à jour avec succès${compCountMsg}.` : `Matériel créé avec succès${compCountMsg}.`)
       });
     } catch (err: any) {
       setMatModalAlert({
@@ -749,6 +927,24 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                           <div>
                             <p className="font-bold text-gray-900">{m.designation}</p>
                             <p className="text-[10px] text-gray-400 font-mono mt-0.5">{m.reference}</p>
+                            {(() => {
+                              const matComps = composants.filter(c => c.id_Materiel === m.id);
+                              if (matComps.length === 0) return null;
+                              return (
+                                <div className="mt-1 flex items-center gap-1 flex-wrap">
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-semibold"
+                                    title={matComps.map(c => `${c.nom} (${c.capaciteValeur}${c.capaciteUnite} - Utilisation: ${c.utilisation})`).join(' | ')}
+                                  >
+                                    <Droplets className="w-3 h-3 text-indigo-600 shrink-0" />
+                                    <span>{matComps.length} composant{matComps.length > 1 ? 's' : ''}</span>
+                                    <span className="text-indigo-400 font-normal">
+                                      ({matComps.map(c => `${c.nom.split(' ')[0]} ${c.utilisation}`).join(', ')})
+                                    </span>
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </td>
 
@@ -1421,6 +1617,271 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                         )}
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION: Composants & Consommables rattachés (Optionnel) */}
+              <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/90 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
+                  <div className="flex items-start gap-2.5">
+                    <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl mt-0.5 shrink-0">
+                      <Droplets className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-gray-900 text-xs">
+                          Composants & Consommables associés
+                        </h4>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                          Optionnel
+                        </span>
+                        {formComposants.length > 0 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                            {formComposants.length} composant{formComposants.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Permet de contrôler les consommables (ex: liquide d'écriture / cartouches d'encre pour une imprimante, toner, barrettes, etc.). Un matériel peut ne comporter aucun composant ou en associer un ou plusieurs.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleAddFormComposant('litrage')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
+                      title="Ajouter un consommable liquide (ex: liquide d'écriture / encre pour imprimante)"
+                    >
+                      <Droplets className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>+ Liquide d'écriture</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddFormComposant()}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-800 bg-white hover:bg-gray-100 border border-gray-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Composant</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Empty State: 0 components */}
+                {formComposants.length === 0 ? (
+                  <div className="p-4 bg-white rounded-xl border border-dashed border-gray-300 text-center space-y-2">
+                    <div className="mx-auto w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+                      <Boxes className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-700">Aucun composant associé à ce matériel</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 max-w-md mx-auto">
+                        Ce matériel sera enregistré sans composant (cas standard pour ordinateurs, écrans, souris...). Pour les équipements avec consommables à contrôler (ex: imprimante avec liquide d'écriture), vous pouvez en ajouter ci-dessous.
+                      </p>
+                    </div>
+                    <div className="pt-1 flex flex-wrap justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleAddFormComposant('litrage')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg cursor-pointer transition-colors"
+                      >
+                        <Droplets className="w-3.5 h-3.5" />
+                        <span>Associer du liquide d'écriture (Litrage)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleAddFormComposant('grammage')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg cursor-pointer transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Associer un composant classique (Grammage)</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {formComposants.map((comp, idx) => {
+                      const isStock = comp.utilisation === '0%';
+                      const percentNum = parseInt(comp.utilisation.replace('%', ''), 10) || 0;
+                      const remainPercent = 100 - percentNum;
+
+                      return (
+                        <div key={idx} className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-2xs space-y-3">
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[10px] flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <span className="font-bold text-gray-800 text-xs">
+                                {comp.nom || `Composant #${idx + 1}`}
+                              </span>
+                              <span className="text-[10px] font-mono text-gray-400">
+                                [{comp.REF_composant}]
+                              </span>
+                              {isStock ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  En stock disponible (0%)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Droplets className="w-3 h-3" />
+                                  Consommé à {comp.utilisation} (Stock - 1)
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFormComposant(idx)}
+                              className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title="Supprimer ce composant"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Réf. Composant <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={comp.REF_composant}
+                                onChange={(e) => handleUpdateFormComposant(idx, { REF_composant: e.target.value })}
+                                placeholder="ex: INK-BK-001"
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-medium focus:bg-white focus:ring-1 focus:ring-black"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Nom / Désignation <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={comp.nom}
+                                onChange={(e) => handleUpdateFormComposant(idx, { nom: e.target.value })}
+                                placeholder="ex: Liquide d'écriture Noir"
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-1 focus:ring-black"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Type de capacité
+                              </label>
+                              <select
+                                value={comp.capaciteType}
+                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteType: e.target.value as 'grammage' | 'litrage' })}
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white cursor-pointer"
+                              >
+                                <option value="litrage">Litrage (Liquide d'écriture, encre...)</option>
+                                <option value="grammage">Grammage (Poudre, cartouche, poids...)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Valeur Capacité <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                min="0.1"
+                                step="any"
+                                value={comp.capaciteValeur}
+                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteValeur: e.target.value === '' ? '' : Number(e.target.value) })}
+                                placeholder="ex: 250"
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-1 focus:ring-black"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Unité {comp.capaciteType === 'litrage' ? '(Litrage)' : '(Grammage)'}
+                              </label>
+                              <select
+                                value={comp.capaciteUnite}
+                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteUnite: e.target.value as 'g' | 'kg' | 'l' | 'cl' })}
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white cursor-pointer"
+                              >
+                                {comp.capaciteType === 'litrage' ? (
+                                  <>
+                                    <option value="cl">cl (Centilitres)</option>
+                                    <option value="l">l (Litres)</option>
+                                  </>
+                                ) : (
+                                  <>
+                                    <option value="g">g (Grammes)</option>
+                                    <option value="kg">kg (Kilogrammes)</option>
+                                  </>
+                                )}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                                Taux d'utilisation / Consommation
+                              </label>
+                              <select
+                                value={comp.utilisation}
+                                onChange={(e) => handleUpdateFormComposant(idx, { utilisation: e.target.value as any })}
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold focus:bg-white cursor-pointer"
+                              >
+                                <option value="0%">0% (Neuf - En stock)</option>
+                                <option value="25%">25% (Entamé - 1/4 utilisé)</option>
+                                <option value="50%">50% (À moitié consommé)</option>
+                                <option value="75%">75% (Presque vide - 3/4 utilisé)</option>
+                                <option value="100%">100% (Épuisé / Vide)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Visual Consumption Gauge */}
+                          <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-1 text-[11px]">
+                            <div className="flex items-center justify-between font-semibold">
+                              <span className="flex items-center gap-1 text-gray-600">
+                                <Droplets className="w-3.5 h-3.5 text-indigo-500" />
+                                Niveau restant de consommable :
+                              </span>
+                              <span className={`font-mono font-bold ${remainPercent > 50 ? 'text-emerald-700' : remainPercent > 20 ? 'text-amber-700' : 'text-red-600'}`}>
+                                {remainPercent}% restant ({comp.capaciteValeur ? `${(Number(comp.capaciteValeur) * remainPercent / 100).toFixed(1)} ${comp.capaciteUnite}` : '—'})
+                              </span>
+                            </div>
+                            <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full transition-all duration-300 ${
+                                  remainPercent > 50 ? 'bg-emerald-500' : remainPercent > 20 ? 'bg-amber-500' : 'bg-red-500'
+                                }`}
+                                style={{ width: `${remainPercent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-0.5">
+                              {isStock
+                                ? '✨ Non entamé (0%) : comptabilisé comme disponible en stock.'
+                                : `⚠️ Utilisé à ${comp.utilisation} : ce composant n'est plus en stock disponible (Stock = Stock - 1).`}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="pt-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleAddFormComposant()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Ajouter un autre composant / consommable</span>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

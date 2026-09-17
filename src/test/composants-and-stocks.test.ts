@@ -411,5 +411,79 @@ describe('Composant & Stock Management Test Suite', () => {
       expect(summary.composantsSummary.parUtilisation['75%']).toBe(0);
       expect(summary.composantsSummary.parUtilisation['100%']).toBe(1);
     });
+
+    it('handles materials with 0 components (plain equipment without consumables)', () => {
+      // Material with no components attached
+      const plainMat = {
+        id: 'MAT-NO-COMP',
+        reference: 'REF-MOUSE-01',
+        designation: 'Souris Optique USB',
+        codeSerie: 'SN-MOUSE-999',
+        qte: 1,
+        statut: 'En stock' as const,
+        id_GroupeMateriel: 'GRP-PC'
+      };
+
+      const comps = itParkService.getComposantsByMateriel(plainMat.id);
+      expect(comps).toHaveLength(0);
+    });
+
+    it('handles printer with writing liquid / ink (litrage control: cl, l and usage levels)', async () => {
+      const printerId = 'MAT-PRINTER-EPSON';
+      const printerMat = {
+        id: printerId,
+        reference: 'REF-PRINT-01',
+        designation: 'Imprimante Multifonction Epson L3250',
+        codeSerie: 'SN-EPSON-4411',
+        qte: 1,
+        statut: 'En service' as const,
+        id_GroupeMateriel: 'GRP-PC'
+      };
+      await itParkService.saveMateriel(printerMat as any);
+
+      // Associated ink liquid (250 cl, 50% consumed)
+      const blackInk = {
+        id: 'COMP-INK-BK',
+        REF_composant: 'INK-BK-77',
+        nom: "Liquide d'écriture Noir HP/Epson",
+        capaciteType: 'litrage' as const,
+        capaciteValeur: 250,
+        capaciteUnite: 'cl' as const,
+        utilisation: '50%' as const,
+        id_Materiel: printerId
+      };
+
+      // Associated cyan ink liquid (1 l, 0% en stock)
+      const cyanInk = {
+        id: 'COMP-INK-CYAN',
+        REF_composant: 'INK-CYAN-88',
+        nom: "Bouteille encre Cyan 1L",
+        capaciteType: 'litrage' as const,
+        capaciteValeur: 1,
+        capaciteUnite: 'l' as const,
+        utilisation: '0%' as const,
+        id_Materiel: printerId
+      };
+
+      await itParkService.saveComposant(blackInk);
+      await itParkService.saveComposant(cyanInk);
+
+      const printerComps = itParkService.getComposantsByMateriel(printerId);
+      expect(printerComps).toHaveLength(2);
+
+      const bk = printerComps.find(c => c.id === 'COMP-INK-BK');
+      expect(bk?.capaciteType).toBe('litrage');
+      expect(bk?.capaciteValeur).toBe(250);
+      expect(bk?.capaciteUnite).toBe('cl');
+      expect(bk?.utilisation).toBe('50%');
+      expect(itParkService.isComposantEnStock(bk?.utilisation)).toBe(false); // 50% = in service/stock - 1
+
+      const cyan = printerComps.find(c => c.id === 'COMP-INK-CYAN');
+      expect(cyan?.capaciteType).toBe('litrage');
+      expect(cyan?.capaciteValeur).toBe(1);
+      expect(cyan?.capaciteUnite).toBe('l');
+      expect(cyan?.utilisation).toBe('0%');
+      expect(itParkService.isComposantEnStock(cyan?.utilisation)).toBe(true); // 0% = En stock
+    });
   });
 });
