@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   UserCheck,
   MessageSquare,
-  Cpu
+  Droplets
 } from 'lucide-react';
 import { BackofficeTab } from '../../types/itPark';
 import { authService, AuthUser } from '../../services/authService';
@@ -68,7 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'messagerie', label: 'Messagerie IT', icon: MessageSquare, badge: unreadCount },
     { id: 'utilisateurs', label: 'Gestion Utilisateurs', icon: Users },
     { id: 'materiels', label: 'Gestion des Matériels', icon: Monitor },
-    { id: 'composants', label: 'Composants & Stocks', icon: Cpu },
+    { id: 'composants', label: "Liquides d'écriture & Stocks", icon: Droplets },
     { id: 'factures', label: 'Gestion des Factures', icon: FileText },
     { id: 'emplacements', label: 'Gestion Emplacements', icon: MapPin },
     { id: 'fournisseurs', label: 'Gestion Fournisseurs', icon: Briefcase },

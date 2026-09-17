@@ -157,6 +157,7 @@ class ITParkService {
             id: c.id || c._id,
             REF_composant: c.REF_composant,
             nom: c.nom,
+            refMateriel: (c.refMateriel || c.materielReference || c.id_Materiel || '').trim().toUpperCase(),
             id_Materiel: c.id_Materiel,
             materielDesignation: c.materielDesignation,
             materielReference: c.materielReference,
@@ -932,24 +933,24 @@ class ITParkService {
   // --- MATERIEL CRUD ON MONGODB ---
   public async saveMateriel(mat: Materiel): Promise<{ success: boolean; message?: string; field?: string }> {
     try {
+      const cleanRef = (mat.reference || '').trim().toUpperCase();
+      const payload = {
+        ...mat,
+        reference: cleanRef,
+        valeurPlafond: mat.montantHT,
+        dateEntree: mat.dateMiseEnService,
+      };
+
       let res: Response;
       if (mat.id && this.materiels.some((m) => m.id === mat.id)) {
         res = await authService.fetchWithAuth(`/api/materiels/${mat.id}`, {
           method: 'PUT',
-          body: JSON.stringify({
-            ...mat,
-            valeurPlafond: mat.montantHT,
-            dateEntree: mat.dateMiseEnService,
-          }),
+          body: JSON.stringify(payload),
         });
       } else {
         res = await authService.fetchWithAuth('/api/materiels', {
           method: 'POST',
-          body: JSON.stringify({
-            ...mat,
-            valeurPlafond: mat.montantHT,
-            dateEntree: mat.dateMiseEnService,
-          }),
+          body: JSON.stringify(payload),
         });
       }
       const data = await res.json();
@@ -977,13 +978,31 @@ class ITParkService {
     }
   }
 
-  // --- COMPOSANTS CRUD ON MONGODB & GESTION DES STOCKS ---
+  // --- LIQUIDES D'ÉCRITURE (Anciennement COMPOSANTS) CRUD ON MONGODB & GESTION DES STOCKS ---
   public getComposants(): Composant[] {
     return [...this.composants];
   }
 
-  public getComposantsByMateriel(id_Materiel: string): Composant[] {
-    return this.composants.filter((c) => c.id_Materiel === id_Materiel);
+  public getLiquidesEcriture(): Composant[] {
+    return this.getComposants();
+  }
+
+  public getComposantsByMateriel(idOrRef: string): Composant[] {
+    if (!idOrRef) return [];
+    const mat = this.materiels.find(
+      (m) => m.id === idOrRef || m.reference.toUpperCase() === idOrRef.toUpperCase()
+    );
+    const refUpper = mat ? mat.reference.toUpperCase() : idOrRef.toUpperCase();
+
+    return this.composants.filter((c) => {
+      const cRef = (c.refMateriel || '').toUpperCase();
+      const cMId = (c.id_Materiel || '').toUpperCase();
+      return cRef === refUpper || cMId === refUpper || c.id_Materiel === idOrRef;
+    });
+  }
+
+  public getLiquidesEcritureByMateriel(idOrRef: string): Composant[] {
+    return this.getComposantsByMateriel(idOrRef);
   }
 
   public setLocalForTesting(data: {
@@ -1001,18 +1020,36 @@ class ITParkService {
     return utilisation === '0%';
   }
 
+  public isLiquideEcritureEnStock(utilisation?: string): boolean {
+    return this.isComposantEnStock(utilisation);
+  }
+
   public async saveComposant(comp: Partial<Composant> & { unite?: any }): Promise<{ success: boolean; message?: string; field?: string; data?: Composant }> {
+    let cleanRefMateriel = (comp.refMateriel || comp.id_Materiel || '').trim().toUpperCase();
+    const linkedMat = this.materiels.find(
+      (m) => m.id === comp.id_Materiel || m.reference.toUpperCase() === cleanRefMateriel
+    );
+    if (linkedMat) {
+      cleanRefMateriel = linkedMat.reference.toUpperCase();
+    }
+
+    const payload = {
+      ...comp,
+      refMateriel: cleanRefMateriel,
+      id_Materiel: cleanRefMateriel,
+    };
+
     try {
       let res: Response | null = null;
       if (comp.id && this.composants.some((c) => c.id === comp.id)) {
         res = await authService.fetchWithAuth(`/api/composants/${comp.id}`, {
           method: 'PUT',
-          body: JSON.stringify(comp),
+          body: JSON.stringify(payload),
         });
       } else {
         res = await authService.fetchWithAuth('/api/composants', {
           method: 'POST',
-          body: JSON.stringify(comp),
+          body: JSON.stringify(payload),
         });
       }
       if (res && res.ok) {
@@ -1022,7 +1059,7 @@ class ITParkService {
       }
       if (res && !res.ok) {
         const data = await res.json();
-        return { success: false, message: data.message || "Erreur lors de l'enregistrement du composant", field: data.field };
+        return { success: false, message: data.message || "Erreur lors de l'enregistrement du liquide d'écriture", field: data.field };
       }
     } catch (e: any) {
       // Local fallback for offline/testing mode
@@ -1031,7 +1068,7 @@ class ITParkService {
     // Local fallback
     const cleanRef = (comp.REF_composant || '').trim();
     if (!cleanRef) {
-      return { success: false, message: 'La référence du composant est obligatoire', field: 'REF_composant' };
+      return { success: false, message: "La référence du liquide d'écriture est obligatoire", field: 'REF_composant' };
     }
     const dup = this.composants.find((c) => c.id !== comp.id && c.REF_composant.toLowerCase() === cleanRef.toLowerCase());
     if (dup) {
@@ -1042,7 +1079,8 @@ class ITParkService {
       id: comp.id || `COMP-${Date.now()}`,
       REF_composant: cleanRef,
       nom: (comp.nom || cleanRef).trim(),
-      id_Materiel: comp.id_Materiel || '',
+      refMateriel: cleanRefMateriel,
+      id_Materiel: cleanRefMateriel,
       capaciteType: comp.capaciteType || 'grammage',
       capaciteValeur: Number(comp.capaciteValeur) || 0,
       capaciteUnite: (comp.capaciteUnite || comp.unite || 'g') as any,
@@ -1060,6 +1098,10 @@ class ITParkService {
     return { success: true, data: saved };
   }
 
+  public async saveLiquideEcriture(comp: Partial<Composant> & { unite?: any }) {
+    return this.saveComposant(comp);
+  }
+
   public async deleteComposant(id: string): Promise<{ success: boolean; message?: string }> {
     try {
       const res = await authService.fetchWithAuth(`/api/composants/${id}`, { method: 'DELETE' });
@@ -1075,6 +1117,10 @@ class ITParkService {
     return { success: true };
   }
 
+  public async deleteLiquideEcriture(id: string) {
+    return this.deleteComposant(id);
+  }
+
   /**
    * Calcul dynamique et pur du stock global, par groupe matériel et par composant.
    * "parrapport au stockage je veux que chaque groupe materiel a son stock et composant sont leurs stocks et il y a le stock globale (pas dans la base dans l'affichage , stats )"
@@ -1088,8 +1134,12 @@ class ITParkService {
     const groupesStock: StockGroupeItem[] = groupes.map((g) => {
       const matsDuGroupe = materiels.filter((m) => m.id_GroupeMateriel === g.id);
       const matIds = matsDuGroupe.map((m) => m.id);
+      const matRefs = matsDuGroupe.map((m) => (m.reference || '').trim().toUpperCase()).filter(Boolean);
 
-      const compDuGroupe = composants.filter((c) => matIds.includes(c.id_Materiel));
+      const compDuGroupe = composants.filter((c) => {
+        const cRef = (c.refMateriel || c.id_Materiel || '').trim().toUpperCase();
+        return matIds.includes(c.id_Materiel || '') || (cRef && matRefs.includes(cRef));
+      });
 
       const enStock = matsDuGroupe.filter((m) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;
       const enService = matsDuGroupe.filter((m) => m.statut === 'En service').length;
@@ -1110,6 +1160,10 @@ class ITParkService {
         composantsEnStock: compEnStock,
         composantsEnService: compEnService,
         composantsEpuises: compEpuises,
+        liquidesAssociesCount: compDuGroupe.length,
+        liquidesEnStock: compEnStock,
+        liquidesEnService: compEnService,
+        liquidesEpuises: compEpuises,
       };
     });
 
@@ -1167,10 +1221,14 @@ class ITParkService {
       totalComposants: compTotal,
       composantsEnStock: compEnStock,
       composantsSortisDuStock: compEnCours + compEpuises,
+      totalLiquides: compTotal,
+      liquidesEnStock: compEnStock,
+      liquidesSortisDuStock: compEnCours + compEpuises,
       stockGlobalCalcule,
       tauxDisponibiliteGlobal,
       groupesStock,
       composantsSummary,
+      liquidesSummary: composantsSummary,
     };
   }
 

@@ -577,6 +577,9 @@ router.get('/materiels', async (_req, res) => {
 
 router.post('/materiels', async (req, res) => {
   try {
+    if (req.body.reference && typeof req.body.reference === 'string') {
+      req.body.reference = req.body.reference.trim().toUpperCase();
+    }
     const validation = await validateMaterielData(req.body);
     if (!validation.isValid) {
       return res.status(400).json({ message: validation.message, field: validation.field });
@@ -591,6 +594,9 @@ router.post('/materiels', async (req, res) => {
 
 router.put('/materiels/:id', async (req, res) => {
   try {
+    if (req.body.reference && typeof req.body.reference === 'string') {
+      req.body.reference = req.body.reference.trim().toUpperCase();
+    }
     const validation = await validateMaterielData(req.body, req.params.id);
     if (!validation.isValid) {
       return res.status(400).json({ message: validation.message, field: validation.field });
@@ -623,8 +629,22 @@ router.delete('/materiels/:id', async (req, res) => {
       { $pull: { materielsConcernesIds: { $in: targetIds } } }
     );
 
-    // 2. Supprimer les composants liés à ce matériel
-    await Composant.deleteMany({ id_Materiel: { $in: targetIds } });
+    // 2. Vérifier si d'autres matériels partagent la même référence interne (ex: autre imprimante du même modèle)
+    // S'il existe d'autres équipements avec la même référence, les liquides d'écriture restent utilisables
+    const matRefUpper = (mat.reference || '').trim().toUpperCase();
+    const otherWithSameRef = await Materiel.countDocuments({
+      reference: matRefUpper,
+      _id: { $ne: mat._id },
+    });
+
+    if (otherWithSameRef === 0) {
+      await Composant.deleteMany({
+        $or: [
+          { refMateriel: matRefUpper },
+          { id_Materiel: { $in: [...targetIds, matRefUpper] } }
+        ]
+      });
+    }
 
     // 3. Supprimer définitivement le document matériel
     await Materiel.findByIdAndDelete(mat._id);
@@ -638,26 +658,48 @@ router.delete('/materiels/:id', async (req, res) => {
   }
 });
 
-// ================= COMPOSANTS =================
-router.get('/composants', async (req, res) => {
+// ================= LIQUIDES D'ÉCRITURE (Anciennement Composants) =================
+const getLiquidesEcritureHandler = async (req: any, res: any) => {
   try {
     const filter: any = {};
-    if (req.query.id_Materiel) {
-      filter.id_Materiel = req.query.id_Materiel;
+    if (req.query.refMateriel) {
+      filter.refMateriel = String(req.query.refMateriel).trim().toUpperCase();
+    } else if (req.query.id_Materiel) {
+      const qRef = String(req.query.id_Materiel).trim().toUpperCase();
+      filter.$or = [{ refMateriel: qRef }, { id_Materiel: req.query.id_Materiel }];
     }
     const items = await Composant.find(filter).sort({ createdAt: -1 });
 
-    // Enrichir avec les infos du matériel lié
+    // Enrichir avec les matériels liés partageant la référence interne
     const materiels = await Materiel.find().lean();
     const enriched = items.map((c: any) => {
       const obj = c.toJSON ? c.toJSON() : c;
-      const mat = materiels.find(
-        (m: any) => String(m._id) === String(obj.id_Materiel) || String(m.id) === String(obj.id_Materiel)
-      );
+      const targetRef = String(obj.refMateriel || obj.id_Materiel || '').trim().toUpperCase();
+      const matchingMats = materiels.filter((m: any) => {
+        const mRef = String(m.reference || '').trim().toUpperCase();
+        const mId = String(m._id);
+        const mCustomId = String(m.id || '');
+        return mRef === targetRef || mId === targetRef || mCustomId === targetRef;
+      });
+      const firstMat = matchingMats[0];
+
       return {
         ...obj,
-        materielDesignation: mat ? mat.designation : 'Matériel non spécifié',
-        materielReference: mat ? mat.reference : '',
+        refMateriel: targetRef,
+        materielDesignation: firstMat
+          ? (matchingMats.length > 1
+              ? `${firstMat.designation} (${matchingMats.length} appareils compatibles)`
+              : firstMat.designation)
+          : 'Matériel non spécifié',
+        materielReference: targetRef,
+        materielsAssociesCount: matchingMats.length,
+        materielsAssocies: matchingMats.map((m: any) => ({
+          id: m.id || String(m._id),
+          designation: m.designation,
+          reference: m.reference,
+          codeSerie: m.codeSerie || '',
+          statut: m.statut,
+        })),
       };
     });
 
@@ -665,22 +707,30 @@ router.get('/composants', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
-});
+};
 
-router.get('/composants/:id', async (req, res) => {
+const getLiquideEcritureByIdHandler = async (req: any, res: any) => {
   try {
     const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
     if (!comp) {
-      return res.status(404).json({ message: 'Composant introuvable.' });
+      return res.status(404).json({ message: "Liquide d'écriture introuvable." });
     }
     res.json(comp);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
-});
+};
 
-router.post('/composants', async (req, res) => {
+const createLiquideEcritureHandler = async (req: any, res: any) => {
   try {
+    if (req.body.refMateriel) {
+      req.body.refMateriel = String(req.body.refMateriel).trim().toUpperCase();
+    }
+    if (!req.body.refMateriel && req.body.id_Materiel) {
+      req.body.refMateriel = String(req.body.id_Materiel).trim().toUpperCase();
+    }
+    req.body.id_Materiel = req.body.refMateriel;
+
     const validation = await validateComposantData(req.body);
     if (!validation.isValid) {
       return res.status(400).json({ message: validation.message, field: validation.field });
@@ -691,14 +741,22 @@ router.post('/composants', async (req, res) => {
   } catch (err: any) {
     res.status(400).json({ message: err.message });
   }
-});
+};
 
-router.put('/composants/:id', async (req, res) => {
+const updateLiquideEcritureHandler = async (req: any, res: any) => {
   try {
     const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
     if (!comp) {
-      return res.status(404).json({ message: 'Composant introuvable.' });
+      return res.status(404).json({ message: "Liquide d'écriture introuvable." });
     }
+
+    if (req.body.refMateriel) {
+      req.body.refMateriel = String(req.body.refMateriel).trim().toUpperCase();
+    }
+    if (!req.body.refMateriel && req.body.id_Materiel) {
+      req.body.refMateriel = String(req.body.id_Materiel).trim().toUpperCase();
+    }
+    req.body.id_Materiel = req.body.refMateriel;
 
     const validation = await validateComposantData(req.body, String(comp._id));
     if (!validation.isValid) {
@@ -710,13 +768,13 @@ router.put('/composants/:id', async (req, res) => {
   } catch (err: any) {
     res.status(400).json({ message: err.message });
   }
-});
+};
 
-router.delete('/composants/:id', async (req, res) => {
+const deleteLiquideEcritureHandler = async (req: any, res: any) => {
   try {
     const comp = await safeFindDoc(Composant, req.params.id) || await Composant.findById(req.params.id);
     if (!comp) {
-      return res.status(404).json({ message: 'Composant introuvable.' });
+      return res.status(404).json({ message: "Liquide d'écriture introuvable." });
     }
 
     const deleteCheck = await canDeleteComposant(String(comp._id));
@@ -726,13 +784,25 @@ router.delete('/composants/:id', async (req, res) => {
 
     await Composant.findByIdAndDelete(comp._id);
     res.json({
-      message: `Composant "${comp.nom}" (Réf: ${comp.REF_composant}) supprimé avec succès.`,
+      message: `Liquide d'écriture "${comp.nom}" (Réf: ${comp.REF_composant}) supprimé avec succès.`,
       id: req.params.id,
     });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
-});
+};
+
+router.get('/composants', getLiquidesEcritureHandler);
+router.get('/composants/:id', getLiquideEcritureByIdHandler);
+router.post('/composants', createLiquideEcritureHandler);
+router.put('/composants/:id', updateLiquideEcritureHandler);
+router.delete('/composants/:id', deleteLiquideEcritureHandler);
+
+router.get('/liquides-ecriture', getLiquidesEcritureHandler);
+router.get('/liquides-ecriture/:id', getLiquideEcritureByIdHandler);
+router.post('/liquides-ecriture', createLiquideEcritureHandler);
+router.put('/liquides-ecriture/:id', updateLiquideEcritureHandler);
+router.delete('/liquides-ecriture/:id', deleteLiquideEcritureHandler);
 
 // ================= GESTION & SYNTHÈSE DES STOCKS =================
 // Calcul dynamique non persisté dans la base, pour affichage et statistiques
@@ -755,10 +825,12 @@ router.get('/stocks/summary', async (_req, res) => {
       });
 
       const matIds = matsDuGroupe.map((m: any) => [String(m._id), m.id ? String(m.id) : '']).flat().filter(Boolean);
+      const matRefs = matsDuGroupe.map((m: any) => String(m.reference || '').trim().toUpperCase()).filter(Boolean);
 
       const composantsDuGroupe = composants.filter((c: any) => {
+        const cRef = String(c.refMateriel || c.id_Materiel || '').trim().toUpperCase();
         const cMId = String(c.id_Materiel || '');
-        return matIds.includes(cMId);
+        return (cRef && matRefs.includes(cRef)) || (cMId && matIds.includes(cMId));
       });
 
       const enStockMats = matsDuGroupe.filter((m: any) => m.statut === 'En stock' || (!m.id_Beneficiaire && m.statut !== 'En panne' && m.statut !== 'Hors service')).length;

@@ -170,19 +170,29 @@ export type CapaciteType = 'grammage' | 'litrage';
 export type CapaciteUniteGrammage = 'g' | 'kg';
 export type CapaciteUniteLitrage = 'l' | 'cl';
 export type CapaciteUnite = CapaciteUniteGrammage | CapaciteUniteLitrage;
-export type TauxUtilisationComposant = '0%' | '25%' | '50%' | '75%' | '100%';
+export type TauxUtilisationLiquide = '0%' | '25%' | '50%' | '75%' | '100%';
+export type TauxUtilisationComposant = TauxUtilisationLiquide;
 
-export interface Composant {
+export interface LiquideEcriture {
   id: string;
   REF_composant: string; // Référence unique saisie par le responsable IT
   nom: string;
-  id_Materiel: string; // Matériel informatique lié
+  refMateriel?: string; // Référence interne du modèle de matériel lié (en MAJUSCULES, ex: "HP-M404")
+  id_Materiel?: string; // rétrocompatibilité
   materielDesignation?: string;
   materielReference?: string;
+  materielsAssociesCount?: number; // Nombre de machines physiques (imprimantes...) partageant cette référence
+  materielsAssocies?: Array<{
+    id: string;
+    designation: string;
+    reference: string;
+    codeSerie?: string;
+    statut?: string;
+  }>;
   capaciteType: CapaciteType; // 'grammage' ou 'litrage'
   capaciteUnite: CapaciteUnite; // si grammage -> 'g' | 'kg', si litrage -> 'l' | 'cl'
   capaciteValeur: number;
-  utilisation: TauxUtilisationComposant; // "0%", "25%", "50%", "75%", "100%"
+  utilisation: TauxUtilisationLiquide; // "0%", "25%", "50%", "75%", "100%"
   enStock?: boolean; // Règle métier : true uniquement si utilisation === '0%', sinon stock - 1
   remarques?: string;
   dateEntree?: string;
@@ -190,6 +200,8 @@ export interface Composant {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export type Composant = LiquideEcriture;
 
 // Synthèse dynamique des stocks (non stocké en base, calculé pour affichage et stats)
 export interface StockGroupeItem {
@@ -203,6 +215,10 @@ export interface StockGroupeItem {
   composantsEnStock: number; // Composants avec utilisation 0%
   composantsEnService: number; // Composants avec utilisation 25%, 50%, 75%
   composantsEpuises: number; // Composants avec utilisation 100%
+  liquidesAssociesCount?: number;
+  liquidesEnStock?: number;
+  liquidesEnService?: number;
+  liquidesEpuises?: number;
 }
 
 export interface StockComposantsSummary {
@@ -217,6 +233,8 @@ export interface StockComposantsSummary {
   parUtilisation: Record<'0%' | '25%' | '50%' | '75%' | '100%', number>;
 }
 
+export type StockLiquidesSummary = StockComposantsSummary;
+
 export interface StockGlobalSummary {
   totalMateriels: number;
   materielsEnStock: number;
@@ -225,10 +243,14 @@ export interface StockGlobalSummary {
   totalComposants: number;
   composantsEnStock: number; // 0%
   composantsSortisDuStock: number; // 25%, 50%, 75%, 100%
+  totalLiquides?: number;
+  liquidesEnStock?: number;
+  liquidesSortisDuStock?: number;
   stockGlobalCalcule: number; // Total articles physiques disponibles en stock (materielsEnStock + composantsEnStock)
   tauxDisponibiliteGlobal: number; // En pourcentage
   groupesStock: StockGroupeItem[];
   composantsSummary: StockComposantsSummary;
+  liquidesSummary?: StockLiquidesSummary;
 }
 
 export interface PersonnelActifItem {

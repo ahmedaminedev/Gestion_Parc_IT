@@ -13,7 +13,6 @@ import {
   Package,
   AlertTriangle,
   ShieldCheck,
-  Cpu,
   Boxes,
   Droplets
 } from 'lucide-react';
@@ -468,7 +467,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
 
       const saved: Materiel = {
         id: editingMat ? editingMat.id : 'mat-' + Date.now(),
-        reference: matForm.reference.trim(),
+        reference: matForm.reference.trim().toUpperCase(),
         ref_immo: matForm.ref_immo ? matForm.ref_immo.trim() : '',
         designation: matForm.designation.trim(),
         codeSerie: matForm.codeSerie.trim(),
@@ -503,13 +502,14 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
         keptIds.push(compId);
         await itParkService.saveComposant({
           id: compId,
-          REF_composant: c.REF_composant.trim(),
+          REF_composant: c.REF_composant.trim().toUpperCase(),
           nom: c.nom.trim(),
           capaciteType: c.capaciteType,
           capaciteValeur: Number(c.capaciteValeur),
           capaciteUnite: c.capaciteUnite,
           utilisation: c.utilisation,
-          id_Materiel: saved.id,
+          refMateriel: saved.reference,
+          id_Materiel: saved.reference,
         });
       }
 
@@ -521,7 +521,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
       }
 
       setIsMatModalOpen(false);
-      const compCountMsg = formComposants.length > 0 ? ` avec ${formComposants.length} composant(s)` : '';
+      const compCountMsg = formComposants.length > 0 ? ` avec ${formComposants.length} liquide(s) d'écriture` : '';
       setPageAlert({
         type: 'success',
         message: result.message || (editingMat ? `Matériel mis à jour avec succès${compCountMsg}.` : `Matériel créé avec succès${compCountMsg}.`)
@@ -825,8 +825,8 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                 : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Cpu className="w-4 h-4" />
-            <span>Composants IT & Consommables ({composants.length})</span>
+            <Droplets className="w-4 h-4" />
+            <span>Liquides d'écriture ({composants.length})</span>
           </button>
 
           <button
@@ -928,17 +928,21 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                             <p className="font-bold text-gray-900">{m.designation}</p>
                             <p className="text-[10px] text-gray-400 font-mono mt-0.5">{m.reference}</p>
                             {(() => {
-                              const matComps = composants.filter(c => c.id_Materiel === m.id);
+                              const mRef = (m.reference || '').trim().toUpperCase();
+                              const matComps = composants.filter(c => {
+                                const cRef = (c.refMateriel || c.materielReference || c.id_Materiel || '').trim().toUpperCase();
+                                return c.id_Materiel === m.id || (mRef && cRef === mRef);
+                              });
                               if (matComps.length === 0) return null;
                               return (
                                 <div className="mt-1 flex items-center gap-1 flex-wrap">
                                   <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/80 rounded-md text-[10px] font-semibold"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-50 text-cyan-800 border border-cyan-200/80 rounded-md text-[10px] font-semibold"
                                     title={matComps.map(c => `${c.nom} (${c.capaciteValeur}${c.capaciteUnite} - Utilisation: ${c.utilisation})`).join(' | ')}
                                   >
-                                    <Droplets className="w-3 h-3 text-indigo-600 shrink-0" />
-                                    <span>{matComps.length} composant{matComps.length > 1 ? 's' : ''}</span>
-                                    <span className="text-indigo-400 font-normal">
+                                    <Droplets className="w-3 h-3 text-cyan-600 shrink-0" />
+                                    <span>{matComps.length} liquide{matComps.length > 1 ? 's' : ''} d'écriture</span>
+                                    <span className="text-cyan-600 font-normal">
                                       ({matComps.map(c => `${c.nom.split(' ')[0]} ${c.utilisation}`).join(', ')})
                                     </span>
                                   </span>
@@ -1189,14 +1193,19 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
             <form noValidate onSubmit={handleSaveMat} className="space-y-4 mt-4 text-xs overflow-y-auto flex-1 pr-0.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-bold text-gray-700 mb-1">Référence interne</label>
+                  <label className="block font-bold text-gray-700 mb-1">
+                    Référence interne (Modèle partagé)
+                  </label>
                   <input
                     type="text"
                     value={matForm.reference}
-                    onChange={(e) => setMatForm({ ...matForm, reference: e.target.value })}
-                    placeholder="ex: REF-4821"
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono text-gray-900 focus:bg-white"
+                    onChange={(e) => setMatForm({ ...matForm, reference: e.target.value.toUpperCase() })}
+                    placeholder="ex: HP-M404"
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl font-mono uppercase font-bold text-gray-900 focus:bg-white"
                   />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    Non unique : plusieurs imprimantes du même modèle peuvent partager cette référence.
+                  </p>
                 </div>
 
                 <div>
@@ -1263,7 +1272,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                 <div className="col-span-1 sm:col-span-2">
                   <label className="font-bold text-gray-700 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1">
-                      <span>Code Série</span>
+                      <span>Numéro de Série (Unique par machine)</span>
                       {(() => {
                         const curGroup = groupes.find(g => g.id === matForm.id_GroupeMateriel);
                         return curGroup?.codeSerieObligatoire ? (
@@ -1291,8 +1300,8 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                     onChange={(e) => setMatForm({ ...matForm, codeSerie: e.target.value })}
                     placeholder={
                       groupes.find(g => g.id === matForm.id_GroupeMateriel)?.codeSerieObligatoire
-                        ? "ex: SN-HP-998822 (Requis pour ce groupe)"
-                        : "ex: SN-HP-998822"
+                        ? "ex: SN-HP-998822 (Numéro unique requis)"
+                        : "ex: SN-HP-998822 (Numéro unique pour distinguer cette machine)"
                     }
                     className={`w-full px-3 py-2 border rounded-xl font-mono text-gray-900 ${
                       groupes.find(g => g.id === matForm.id_GroupeMateriel)?.codeSerieObligatoire && !matForm.codeSerie.trim()
@@ -1621,29 +1630,29 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                 )}
               </div>
 
-              {/* SECTION: Composants & Consommables rattachés (Optionnel) */}
+              {/* SECTION: Liquides d'écriture rattachés (Optionnel) */}
               <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/90 space-y-3.5">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
                   <div className="flex items-start gap-2.5">
-                    <div className="p-2 bg-indigo-100 text-indigo-700 rounded-xl mt-0.5 shrink-0">
+                    <div className="p-2 bg-cyan-100 text-cyan-700 rounded-xl mt-0.5 shrink-0">
                       <Droplets className="w-4 h-4" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-bold text-gray-900 text-xs">
-                          Composants & Consommables associés
+                          Liquides d'écriture associés (Modèle partagé)
                         </h4>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
                           Optionnel
                         </span>
                         {formComposants.length > 0 && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
-                            {formComposants.length} composant{formComposants.length > 1 ? 's' : ''}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                            {formComposants.length} liquide{formComposants.length > 1 ? 's' : ''} d'écriture
                           </span>
                         )}
                       </div>
                       <p className="text-[11px] text-gray-500 mt-0.5">
-                        Permet de contrôler les consommables (ex: liquide d'écriture / cartouches d'encre pour une imprimante, toner, barrettes, etc.). Un matériel peut ne comporter aucun composant ou en associer un ou plusieurs.
+                        Les consommables sont reliés à la <strong>référence interne du modèle</strong> ({matForm.reference || 'REF'}), permettant à plusieurs imprimantes identiques de partager le même liquide d'écriture.
                       </p>
                     </div>
                   </div>
@@ -1652,20 +1661,21 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                     <button
                       type="button"
                       onClick={() => handleAddFormComposant('litrage')}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
-                      title="Ajouter un consommable liquide (ex: liquide d'écriture / encre pour imprimante)"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-xl transition-colors cursor-pointer"
+                      title="Ajouter un liquide d'écriture (ex: cartouche d'encre / réservoir liquide)"
                     >
-                      <Droplets className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>+ Liquide d'écriture</span>
+                      <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                      <span>+ Liquide d'écriture (Litrage)</span>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => handleAddFormComposant()}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-gray-800 bg-white hover:bg-gray-100 border border-gray-300 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                      onClick={() => handleAddFormComposant('grammage')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
+                      title="Ajouter un consommable mesuré au poids (ex: toner en poudre)"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>+ Composant</span>
+                      <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>+ Toner / Poudre (Grammage)</span>
                     </button>
                   </div>
                 </div>
@@ -1673,31 +1683,31 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                 {/* Empty State: 0 components */}
                 {formComposants.length === 0 ? (
                   <div className="p-4 bg-white rounded-xl border border-dashed border-gray-300 text-center space-y-2">
-                    <div className="mx-auto w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
-                      <Boxes className="w-4 h-4" />
+                    <div className="mx-auto w-9 h-9 rounded-full bg-cyan-50 flex items-center justify-center text-cyan-600">
+                      <Droplets className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-gray-700">Aucun composant associé à ce matériel</p>
+                      <p className="text-xs font-bold text-gray-700">Aucun liquide d'écriture associé</p>
                       <p className="text-[11px] text-gray-400 mt-0.5 max-w-md mx-auto">
-                        Ce matériel sera enregistré sans composant (cas standard pour ordinateurs, écrans, souris...). Pour les équipements avec consommables à contrôler (ex: imprimante avec liquide d'écriture), vous pouvez en ajouter ci-dessous.
+                        Ce matériel sera enregistré sans liquide d'écriture. Pour les imprimantes ou copieurs, vous pouvez en associer un ou plusieurs ci-dessous (reliés à la référence interne du modèle).
                       </p>
                     </div>
                     <div className="pt-1 flex flex-wrap justify-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleAddFormComposant('litrage')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg cursor-pointer transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg cursor-pointer transition-colors"
                       >
-                        <Droplets className="w-3.5 h-3.5" />
-                        <span>Associer du liquide d'écriture (Litrage)</span>
+                        <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                        <span>Associer un liquide d'écriture (Litrage)</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => handleAddFormComposant('grammage')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg cursor-pointer transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg cursor-pointer transition-colors"
                       >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Associer un composant classique (Grammage)</span>
+                        <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Associer un toner / poudre (Grammage)</span>
                       </button>
                     </div>
                   </div>
@@ -1738,7 +1748,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                               type="button"
                               onClick={() => handleRemoveFormComposant(idx)}
                               className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="Supprimer ce composant"
+                              title="Supprimer ce liquide d'écriture"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1747,14 +1757,14 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Réf. Composant <span className="text-red-500">*</span>
+                                Réf. Liquide <span className="text-red-500">*</span>
                               </label>
                               <input
                                 type="text"
                                 value={comp.REF_composant}
-                                onChange={(e) => handleUpdateFormComposant(idx, { REF_composant: e.target.value })}
-                                placeholder="ex: INK-BK-001"
-                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono font-medium focus:bg-white focus:ring-1 focus:ring-black"
+                                onChange={(e) => handleUpdateFormComposant(idx, { REF_composant: e.target.value.toUpperCase() })}
+                                placeholder="ex: LIQ-BK-001"
+                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-mono uppercase font-medium focus:bg-white focus:ring-1 focus:ring-black"
                               />
                             </div>
 

@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Layers,
-  Cpu,
   Boxes,
   Scale,
   Droplets,
@@ -79,7 +78,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
           </div>
           <p className="text-xs text-gray-500 mt-1 max-w-2xl">
             Calcul dynamique en direct pour l'affichage et les statistiques. Chaque groupe de matériel dispose de son stock,
-            les composants sont régis par la règle <strong>0% = en stock, sinon stock - 1</strong>, et le <strong>stock global</strong> est consolidé en temps réel sans duplication en base de données.
+            les liquides d'écriture sont régis par la règle <strong>0% = en stock, sinon stock - 1</strong>, et le <strong>stock global</strong> est consolidé en temps réel sans duplication en base de données.
           </p>
         </div>
 
@@ -120,7 +119,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
           <div className="mt-2 text-xs text-gray-300 flex items-center justify-between border-t border-gray-700/60 pt-2">
             <span>Matériels : <strong>{materielsEnStock}</strong></span>
             <span>+</span>
-            <span>Composants (0%) : <strong>{composantsEnStock}</strong></span>
+            <span>Liquides d'écriture (0%) : <strong>{composantsEnStock}</strong></span>
           </div>
         </div>
 
@@ -170,10 +169,10 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
         <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Stock des Composants
+              Stock des Liquides d'écriture
             </span>
-            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-600">
-              <Cpu className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center text-cyan-600">
+              <Droplets className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
@@ -197,7 +196,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
                 Stock Dédié par Groupe de Matériel
               </h3>
               <p className="text-xs text-gray-500">
-                Chaque groupe matériel possède ses stocks propres (matériels + composants rattachés).
+                Chaque groupe matériel possède ses stocks propres (matériels + liquides d'écriture rattachés).
               </p>
             </div>
           </div>
@@ -216,7 +215,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
                 onClick={onNavigateToComposants}
                 className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold cursor-pointer"
               >
-                Gérer les Composants <ArrowUpRight className="w-3.5 h-3.5" />
+                Gérer les Liquides d'écriture <ArrowUpRight className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
@@ -231,9 +230,9 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
                 <th className="py-3 px-4 text-center">Matériels en Stock</th>
                 <th className="py-3 px-4 text-center">En Service</th>
                 <th className="py-3 px-4 text-center">En Panne</th>
-                <th className="py-3 px-4 text-center">Composants Liés</th>
-                <th className="py-3 px-4 text-center">Composants en Stock (0%)</th>
-                <th className="py-3 px-4 text-center">Composants Consommés</th>
+                <th className="py-3 px-4 text-center">Liquides Liés</th>
+                <th className="py-3 px-4 text-center">Liquides en Stock (0%)</th>
+                <th className="py-3 px-4 text-center">Liquides Consommés</th>
                 <th className="py-3 px-4 text-right">Disponibilité Groupe</th>
               </tr>
             </thead>
@@ -330,7 +329,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               </div>
               <div>
                 <h4 className="font-bold text-gray-900 text-sm">
-                  Stock Composants - Grammage (Poids)
+                  Stock Liquides d'écriture - Grammage (Poids)
                 </h4>
                 <p className="text-xs text-gray-500">
                   Unités g (Grammes) & kg (Kilogrammes)
@@ -338,7 +337,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-indigo-100 text-indigo-800">
-              {composantsSummary?.parType.grammage.total || 0} composant(s)
+              {composantsSummary?.parType.grammage.total || 0} liquide(s)
             </span>
           </div>
 
@@ -378,7 +377,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               </div>
               <div>
                 <h4 className="font-bold text-gray-900 text-sm">
-                  Stock Composants - Litrage (Volume)
+                  Stock Liquides d'écriture - Litrage (Volume)
                 </h4>
                 <p className="text-xs text-gray-500">
                   Unités l (Litres) & cl (Centilitres)
@@ -386,7 +385,7 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               </div>
             </div>
             <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-cyan-100 text-cyan-800">
-              {composantsSummary?.parType.litrage.total || 0} composant(s)
+              {composantsSummary?.parType.litrage.total || 0} liquide(s)
             </span>
           </div>
 

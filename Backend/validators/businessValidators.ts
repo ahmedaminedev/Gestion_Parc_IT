@@ -97,26 +97,16 @@ export async function validateMaterielData(
     id_Beneficiaire,
   } = data;
 
-  // 1. Référence interne (Obligatoire & Unique)
+  // 1. Référence interne (Obligatoire, non-unique : autorise plusieurs matériels/imprimantes à partager la même référence modèle)
+  // Enregistrée obligatoirement en MAJUSCULES
   if (!reference || !reference.trim()) {
     return {
       isValid: false,
       field: 'reference',
-      message: "La référence interne de l'équipement est obligatoire (ex: MAT-2025-001).",
+      message: "La référence interne de l'équipement est obligatoire (ex: MAT-2025-001 ou HP-M404).",
     };
   }
-  const cleanRef = reference.trim();
-  const duplicateRef = await Materiel.findOne({
-    reference: { $regex: new RegExp(`^${escapeRegex(cleanRef)}$`, 'i') },
-    ...getExclusionFilter(existingId),
-  });
-  if (duplicateRef) {
-    return {
-      isValid: false,
-      field: 'reference',
-      message: `La référence interne "${cleanRef}" est déjà utilisée par un autre équipement dans votre parc.`,
-    };
-  }
+  data.reference = reference.trim().toUpperCase();
 
   // 2. Référence d'immobilisation ERP (Optionnelle mais Unique si renseignée)
   if (ref_immo && ref_immo.trim()) {
@@ -984,7 +974,6 @@ export async function validateComposantData(
   const {
     REF_composant,
     nom,
-    id_Materiel,
     capaciteType,
     capaciteUnite,
     capaciteValeur,
@@ -1015,32 +1004,50 @@ export async function validateComposantData(
     };
   }
 
-  // 2. Nom / Désignation du composant
+  // 2. Nom / Désignation du liquide d'écriture
   if (!nom || typeof nom !== 'string' || !nom.trim()) {
     return {
       isValid: false,
-      message: 'Le nom ou la désignation du composant est obligatoire.',
+      message: "Le nom ou la désignation du liquide d'écriture est obligatoire.",
       field: 'nom',
     };
   }
 
-  // 3. Liaison avec le modèle Matériel
-  if (!id_Materiel || typeof id_Materiel !== 'string' || !id_Materiel.trim()) {
+  // 3. Liaison avec la Référence Interne du Matériel (refMateriel ou id_Materiel)
+  // Permet de lier le liquide d'écriture à une référence de modèle pouvant être partagée par plusieurs imprimantes
+  const inputRef = (data.refMateriel || data.id_Materiel || '').trim().toUpperCase();
+  if (!inputRef) {
     return {
       isValid: false,
-      message: 'Le composant doit impérativement être lié à un matériel informatique.',
-      field: 'id_Materiel',
+      message: "Le liquide d'écriture doit impérativement être lié à la référence interne d'un matériel informatique.",
+      field: 'refMateriel',
     };
   }
 
-  const materielLie = await safeFindDoc(Materiel, id_Materiel);
+  let materielLie = await Materiel.findOne({
+    $or: [
+      { reference: { $regex: new RegExp(`^${escapeRegex(inputRef)}$`, 'i') } },
+      ...(mongoose.isValidObjectId(inputRef) ? [{ _id: inputRef }] : []),
+      { id: inputRef }
+    ]
+  });
+
+  if (!materielLie) {
+    materielLie = await safeFindDoc(Materiel, inputRef);
+  }
+
   if (!materielLie) {
     return {
       isValid: false,
-      message: 'Le matériel sélectionné pour ce composant est introuvable dans la base de données.',
-      field: 'id_Materiel',
+      message: `Le matériel correspondant à la référence interne "${inputRef}" est introuvable dans la base de données.`,
+      field: 'refMateriel',
     };
   }
+
+  // Enregistrer systématiquement la référence interne en MAJUSCULES pour garantir la liaison
+  const resolvedRef = (materielLie.reference || inputRef).trim().toUpperCase();
+  data.refMateriel = resolvedRef;
+  data.id_Materiel = resolvedRef;
 
   // 4. Capacité : type enumerate ('grammage' | 'litrage')
   if (!capaciteType || !['grammage', 'litrage'].includes(capaciteType)) {
@@ -1105,10 +1112,15 @@ export async function validateComposantData(
 export async function canDeleteComposant(id: string): Promise<ValidationResult> {
   const comp = await safeFindDoc(Composant, id) || await Composant.findById(id);
   if (!comp) {
-    return { isValid: false, message: 'Composant introuvable.' };
+    return { isValid: false, message: "Liquide d'écriture introuvable." };
   }
   return { isValid: true };
 }
+
+export const validateLiquideEcritureData = validateComposantData;
+export const isLiquideEcritureEnStock = isComposantEnStock;
+export const canDeleteLiquideEcriture = canDeleteComposant;
+
 
 
 

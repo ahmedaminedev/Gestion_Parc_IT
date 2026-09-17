@@ -22,8 +22,8 @@ export interface IMateriel extends Document {
 
 const MaterielSchema: Schema = new Schema(
   {
-    reference: { type: String, required: true },
-    ref_immo: { type: String, default: '' },
+    reference: { type: String, required: true, trim: true, uppercase: true },
+    ref_immo: { type: String, default: '', trim: true },
     designation: { type: String, required: true },
     description: { type: String, default: '' },
     codeSerie: { type: String, default: '' },

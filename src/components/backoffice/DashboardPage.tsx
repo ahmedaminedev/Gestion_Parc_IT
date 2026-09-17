@@ -804,7 +804,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
           </div>
           <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
             <span className="text-gray-500">Matériels : <strong>{metrics.materielsEnStock}</strong></span>
-            <span className="text-purple-600 font-bold">Composants (0%) : {metrics.composantsEnStock || 0}</span>
+            <span className="text-purple-600 font-bold">Liquides d'écriture (0%) : {metrics.composantsEnStock ?? 0}</span>
           </div>
         </div>
 

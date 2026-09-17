@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  Cpu,
+  Droplets,
   Plus,
   Search,
   Pencil,
@@ -9,14 +9,16 @@ import {
   CheckCircle2,
   AlertTriangle,
   Scale,
-  Droplets,
   Package,
   Layers,
-  Percent
+  Percent,
+  Printer,
+  Info
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import {
   Composant,
+  LiquideEcriture,
   Materiel,
   CapaciteType,
   CapaciteUnite,
@@ -28,7 +30,7 @@ import { CustomConfirmModal } from '../common/CustomConfirmModal';
 interface ComposantsSectionProps {
   isDSIAdmin: boolean;
   materiels: Materiel[];
-  composants: Composant[];
+  composants: (Composant | LiquideEcriture)[];
   onRefresh: () => void;
 }
 
@@ -53,14 +55,31 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const [editingComp, setEditingComp] = useState<Composant | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form State
+  // Modèles / Références internes uniques de matériels (imprimantes, etc.)
+  const modelesRefs = useMemo(() => {
+    const map = new Map<string, { ref: string; designation: string; count: number; machines: Materiel[] }>();
+    for (const m of materiels) {
+      const r = (m.reference || '').trim().toUpperCase();
+      if (!r) continue;
+      const entry = map.get(r);
+      if (entry) {
+        entry.count++;
+        entry.machines.push(m);
+      } else {
+        map.set(r, { ref: r, designation: m.designation, count: 1, machines: [m] });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [materiels]);
+
+  // Form State : lier à la référence interne en majuscules (refMateriel)
   const [form, setForm] = useState({
     REF_composant: '',
     nom: '',
-    id_Materiel: '',
-    capaciteType: 'grammage' as CapaciteType,
-    capaciteUnite: 'g' as CapaciteUnite,
-    capaciteValeur: 100,
+    refMateriel: '',
+    capaciteType: 'litrage' as CapaciteType,
+    capaciteUnite: 'cl' as CapaciteUnite,
+    capaciteValeur: 250,
     utilisation: '0%' as TauxUtilisationComposant,
     description: '',
   });
@@ -73,13 +92,14 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const handleOpenCreateModal = () => {
     setModalAlert(null);
     setEditingComp(null);
+    const defaultRef = modelesRefs.length > 0 ? modelesRefs[0].ref : '';
     setForm({
-      REF_composant: '',
-      nom: '',
-      id_Materiel: materiels.length > 0 ? materiels[0].id : '',
-      capaciteType: 'grammage',
-      capaciteUnite: 'g',
-      capaciteValeur: 100,
+      REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
+      nom: "Liquide d'écriture (Encre / Toner)",
+      refMateriel: defaultRef,
+      capaciteType: 'litrage',
+      capaciteUnite: 'cl',
+      capaciteValeur: 250,
       utilisation: '0%',
       description: '',
     });
@@ -90,10 +110,11 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const handleOpenEditModal = (comp: Composant) => {
     setModalAlert(null);
     setEditingComp(comp);
+    const currentRef = (comp.refMateriel || comp.materielReference || comp.id_Materiel || '').trim().toUpperCase();
     setForm({
       REF_composant: comp.REF_composant,
       nom: comp.nom,
-      id_Materiel: comp.id_Materiel,
+      refMateriel: currentRef,
       capaciteType: comp.capaciteType,
       capaciteUnite: comp.capaciteUnite,
       capaciteValeur: comp.capaciteValeur,
@@ -103,12 +124,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     setIsModalOpen(true);
   };
 
-  // Changement dynamique du type de capacité (grammage -> g/kg, litrage -> l/cl)
+  // Changement dynamique du type de capacité (litrage -> l/cl, grammage -> g/kg)
   const handleCapaciteTypeChange = (type: CapaciteType) => {
     setForm((prev) => ({
       ...prev,
       capaciteType: type,
-      capaciteUnite: type === 'grammage' ? 'g' : 'l',
+      capaciteUnite: type === 'litrage' ? 'cl' : 'g',
     }));
   };
 
@@ -121,7 +142,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     if (!form.REF_composant.trim()) {
       setModalAlert({
         type: 'error',
-        message: 'La référence du composant (REF_composant) est obligatoire et doit être saisie par le Responsable IT.',
+        message: "La référence du liquide d'écriture (REF) est obligatoire.",
       });
       return;
     }
@@ -129,15 +150,16 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     if (!form.nom.trim()) {
       setModalAlert({
         type: 'error',
-        message: 'Le nom / la désignation du composant est obligatoire.',
+        message: "Le nom / la désignation du liquide d'écriture est obligatoire.",
       });
       return;
     }
 
-    if (!form.id_Materiel) {
+    const cleanRefUpper = form.refMateriel.trim().toUpperCase();
+    if (!cleanRefUpper) {
       setModalAlert({
         type: 'error',
-        message: 'Veuillez sélectionner un matériel informatique à associer.',
+        message: 'Veuillez renseigner la référence interne du matériel compatible (ex: HP-M404).',
       });
       return;
     }
@@ -154,9 +176,10 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     try {
       const payload: Partial<Composant> = {
         ...(editingComp?.id ? { id: editingComp.id } : {}),
-        REF_composant: form.REF_composant.trim(),
+        REF_composant: form.REF_composant.trim().toUpperCase(),
         nom: form.nom.trim(),
-        id_Materiel: form.id_Materiel,
+        refMateriel: cleanRefUpper,
+        id_Materiel: cleanRefUpper,
         capaciteType: form.capaciteType,
         capaciteUnite: form.capaciteUnite,
         capaciteValeur: Number(form.capaciteValeur),
@@ -168,7 +191,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       if (!result.success) {
         setModalAlert({
           type: 'error',
-          message: result.message || "Erreur lors de l'enregistrement du composant.",
+          message: result.message || "Erreur lors de l'enregistrement du liquide d'écriture.",
         });
         return;
       }
@@ -177,8 +200,8 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       setSectionAlert({
         type: 'success',
         message: editingComp
-          ? `Composant "${form.nom}" (Réf: ${form.REF_composant}) modifié avec succès.`
-          : `Composant "${form.nom}" (Réf: ${form.REF_composant}) créé avec succès.`,
+          ? `Liquide d'écriture "${form.nom}" (Réf: ${form.REF_composant}) mis à jour avec succès.`
+          : `Liquide d'écriture "${form.nom}" (Réf: ${form.REF_composant}) enregistré avec succès.`,
       });
       onRefresh();
     } catch (err: any) {
@@ -199,12 +222,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       if (!result.success) {
         setSectionAlert({
           type: 'error',
-          message: result.message || 'Impossible de supprimer ce composant.',
+          message: result.message || "Impossible de supprimer ce liquide d'écriture.",
         });
       } else {
         setSectionAlert({
           type: 'success',
-          message: `Composant "${compToDelete.nom}" supprimé avec succès.`,
+          message: `Liquide d'écriture "${compToDelete.nom}" supprimé avec succès.`,
         });
         onRefresh();
       }
@@ -219,17 +242,23 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     }
   };
 
-  // Filtrage des composants
+  // Filtrage des liquides d'écriture
   const filteredComposants = composants.filter((c) => {
+    const cRefUpper = (c.refMateriel || c.materielReference || c.id_Materiel || '').trim().toUpperCase();
+
     // Recherche textuelle
     const matchesSearch =
       c.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.REF_composant.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cRefUpper.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.materielDesignation && c.materielDesignation.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (c.description && c.description.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    // Filtre Matériel
-    const matchesMateriel = selectedMaterielFilter === 'all' || c.id_Materiel === selectedMaterielFilter;
+    // Filtre Référence Matériel
+    let matchesMateriel = true;
+    if (selectedMaterielFilter !== 'all') {
+      matchesMateriel = cRefUpper === selectedMaterielFilter.toUpperCase() || c.id_Materiel === selectedMaterielFilter;
+    }
 
     // Filtre Type
     const matchesType = selectedTypeFilter === 'all' || c.capaciteType === selectedTypeFilter;
@@ -252,7 +281,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const epuisesCount = composants.filter((c) => c.utilisation === '100%').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" id="liquides-ecriture-section">
       {sectionAlert && (
         <FormAlert
           type={sectionAlert.type}
@@ -261,12 +290,27 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
         />
       )}
 
-      {/* KPI Cards Composants & Règle Stock */}
+      {/* Règle et Information Métier */}
+      <div className="bg-blue-50/80 border border-blue-200/90 rounded-2xl p-4 flex items-start gap-3">
+        <div className="p-2 bg-blue-100 text-blue-700 rounded-xl shrink-0 mt-0.5">
+          <Info className="w-5 h-5" />
+        </div>
+        <div className="text-xs text-blue-900 leading-relaxed">
+          <p className="font-bold text-sm text-blue-950">
+            Liaison par Référence Interne de Matériel (Modèle Partagé)
+          </p>
+          <p className="mt-1">
+            Les liquides d'écriture sont reliés à la <strong>référence interne</strong> du matériel (enregistrée en majuscules). Deux imprimantes (ou plus) du même modèle possèdent la même référence interne et utilisent ainsi le même liquide d'écriture, tout en conservant leur numéro de série propre et unique pour distinguer chaque machine.
+          </p>
+        </div>
+      </div>
+
+      {/* KPI Cards Liquides d'écriture & Règle Stock */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-              Total Composants
+              Total Liquides d'écriture
             </span>
             <span className="text-2xl font-bold text-gray-900 mt-1 block">
               {totalComposants}
@@ -275,12 +319,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
               Inventoriés dans le parc
             </span>
           </div>
-          <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
-            <Cpu className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600">
+            <Droplets className="w-6 h-6" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-4 border border-emerald-200 shadow-sm flex items-center justify-between bg-emerald-50/20">
+        <div className="bg-white rounded-xl p-4 border border-emerald-200 shadow-xs flex items-center justify-between bg-emerald-50/20">
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider block">
@@ -302,7 +346,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-sm flex items-center justify-between bg-amber-50/20">
+        <div className="bg-white rounded-xl p-4 border border-amber-200 shadow-xs flex items-center justify-between bg-amber-50/20">
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider block">
@@ -324,7 +368,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-4 border border-rose-200 shadow-sm flex items-center justify-between bg-rose-50/20">
+        <div className="bg-white rounded-xl p-4 border border-rose-200 shadow-xs flex items-center justify-between bg-rose-50/20">
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-semibold text-rose-800 uppercase tracking-wider block">
@@ -348,46 +392,50 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       </div>
 
       {/* Barre de Recherche et Filtres */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-1 flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Rechercher par REF, nom, matériel..."
+              id="search-liquides-input"
+              placeholder="Rechercher par REF, nom, référence matériel..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white transition-colors"
             />
           </div>
 
-          {/* Filtre Matériel */}
+          {/* Filtre Référence Modèle Matériel */}
           <select
+            id="filter-materiel-ref"
             value={selectedMaterielFilter}
             onChange={(e) => setSelectedMaterielFilter(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
           >
-            <option value="all">Tous les matériels</option>
-            {materiels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.reference} - {m.designation}
+            <option value="all">Toutes références matériels</option>
+            {modelesRefs.map((mod) => (
+              <option key={mod.ref} value={mod.ref}>
+                {mod.ref} — {mod.designation} ({mod.count} appareil{mod.count > 1 ? 's' : ''})
               </option>
             ))}
           </select>
 
-          {/* Filtre Type (Grammage / Litrage) */}
+          {/* Filtre Type (Litrage / Grammage) */}
           <select
+            id="filter-capacite-type"
             value={selectedTypeFilter}
             onChange={(e) => setSelectedTypeFilter(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
           >
-            <option value="all">Tous types de capacité</option>
-            <option value="grammage">⚖️ Grammage (g / kg)</option>
-            <option value="litrage">💧 Litrage (l / cl)</option>
+            <option value="all">Tous types de mesure</option>
+            <option value="litrage">💧 Litrage (l / cl - Encre)</option>
+            <option value="grammage">⚖️ Grammage (g / kg - Toner)</option>
           </select>
 
           {/* Filtre Disponibilité Stock */}
           <select
+            id="filter-stock-statut"
             value={selectedStockFilter}
             onChange={(e) => setSelectedStockFilter(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -398,27 +446,29 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
           </select>
         </div>
 
-        {/* Bouton Ajouter Composant */}
+        {/* Bouton Ajouter Liquide d'écriture */}
         {isDSIAdmin && (
           <button
+            id="btn-nouveau-liquide"
             onClick={handleOpenCreateModal}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium text-sm rounded-lg hover:from-red-700 hover:to-red-800 shadow-sm shadow-red-500/20 transition-all cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 text-white font-medium text-sm rounded-lg hover:from-red-700 hover:to-red-800 shadow-xs shadow-red-500/20 transition-all cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            Nouveau Composant
+            Nouveau Liquide d'écriture
           </button>
         )}
       </div>
 
-      {/* Tableau des Composants */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Tableau des Liquides d'écriture */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse" id="table-liquides-ecriture">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                <th className="py-3 px-4">REF Composant</th>
+                <th className="py-3 px-4">RÉF Liquide</th>
                 <th className="py-3 px-4">Désignation</th>
-                <th className="py-3 px-4">Matériel Lié</th>
+                <th className="py-3 px-4">Réf. Interne Matériel Lié</th>
+                <th className="py-3 px-4">Imprimantes / Équipements Associés</th>
                 <th className="py-3 px-4">Capacité</th>
                 <th className="py-3 px-4">Taux d'Utilisation</th>
                 <th className="py-3 px-4">Statut Stock</th>
@@ -428,20 +478,26 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
             <tbody className="divide-y divide-gray-100 text-sm">
               {filteredComposants.length === 0 ? (
                 <tr>
-                  <td colSpan={isDSIAdmin ? 7 : 6} className="py-12 text-center text-gray-500">
-                    <Cpu className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="font-medium text-gray-700">Aucun composant trouvé</p>
+                  <td colSpan={isDSIAdmin ? 8 : 7} className="py-12 text-center text-gray-500">
+                    <Droplets className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="font-medium text-gray-700">Aucun liquide d'écriture trouvé</p>
                     <p className="text-xs text-gray-400 mt-1">
                       {searchTerm || selectedMaterielFilter !== 'all' || selectedTypeFilter !== 'all' || selectedStockFilter !== 'all'
                         ? 'Essayez de réinitialiser vos critères de recherche ou filtres.'
-                        : 'Créez votre premier composant lié à un matériel pour commencer le suivi de stock.'}
+                        : "Enregistrez un nouveau liquide d'écriture lié à la référence interne de vos imprimantes."}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredComposants.map((comp) => {
                   const isEnStock = comp.utilisation === '0%';
-                  const matLie = materiels.find((m) => m.id === comp.id_Materiel);
+                  const refUpper = (comp.refMateriel || comp.materielReference || comp.id_Materiel || '').trim().toUpperCase();
+                  
+                  // Trouver tous les matériels qui partagent cette référence interne
+                  const associatedMats = materiels.filter((m) => {
+                    const mRef = (m.reference || '').trim().toUpperCase();
+                    return mRef === refUpper || m.id === comp.id_Materiel;
+                  });
 
                   return (
                     <tr key={comp.id} className="hover:bg-gray-50/80 transition-colors">
@@ -457,44 +513,67 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                       {/* Désignation */}
                       <td className="py-3 px-4 font-medium text-gray-900">
                         <div className="flex flex-col">
-                          <span>{comp.nom}</span>
+                          <span className="font-semibold text-gray-900">{comp.nom}</span>
                           {comp.description && (
                             <span className="text-xs text-gray-400 truncate max-w-xs">{comp.description}</span>
                           )}
                         </div>
                       </td>
 
-                      {/* Matériel Lié */}
+                      {/* Référence Interne Matériel Lié */}
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg font-mono text-xs font-bold uppercase">
+                            <Layers className="w-3.5 h-3.5 text-purple-600" />
+                            {refUpper || '—'}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Imprimantes / Équipements Associés */}
                       <td className="py-3 px-4 text-gray-700">
-                        {matLie ? (
-                          <div className="flex items-center gap-1.5">
-                            <Layers className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            <span className="text-xs font-medium text-gray-900">{matLie.designation}</span>
-                            <span className="text-[11px] text-gray-500 font-mono">({matLie.reference})</span>
+                        {associatedMats.length > 0 ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                                associatedMats.length > 1
+                                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              }`}>
+                                <Printer className="w-3 h-3 text-blue-600" />
+                                <span>
+                                  {associatedMats.length} {associatedMats.length > 1 ? 'imprimantes compatibles' : 'imprimante compatible'}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 font-mono truncate max-w-xs" title={associatedMats.map(m => `${m.designation} (S/N: ${m.codeSerie})`).join(' | ')}>
+                              {associatedMats.map(m => m.codeSerie).join(', ')}
+                            </div>
                           </div>
                         ) : comp.materielDesignation ? (
                           <div className="flex items-center gap-1.5">
-                            <Layers className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                             <span className="text-xs font-medium text-gray-900">{comp.materielDesignation}</span>
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400 italic">Non renseigné</span>
+                          <span className="text-xs text-amber-600 italic bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                            En attente d'imprimante avec la réf {refUpper}
+                          </span>
                         )}
                       </td>
 
-                      {/* Capacité (Grammage ou Litrage) */}
+                      {/* Capacité (Litrage ou Grammage) */}
                       <td className="py-3 px-4">
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">
-                          {comp.capaciteType === 'grammage' ? (
-                            <Scale className="w-3.5 h-3.5 text-indigo-600" />
-                          ) : (
+                          {comp.capaciteType === 'litrage' ? (
                             <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                          ) : (
+                            <Scale className="w-3.5 h-3.5 text-indigo-600" />
                           )}
                           <span>
                             {comp.capaciteValeur} {comp.capaciteUnite}
                           </span>
                           <span className="text-[10px] text-gray-500">
-                            ({comp.capaciteType === 'grammage' ? 'Poids' : 'Volume'})
+                            ({comp.capaciteType === 'litrage' ? 'Volume' : 'Poids'})
                           </span>
                         </div>
                       </td>
@@ -533,7 +612,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                       {/* Statut Stock (Règle Métier : 0% = En Stock, sinon Stock - 1) */}
                       <td className="py-3 px-4">
                         {isEnStock ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             En stock (0%)
                           </span>
@@ -552,7 +631,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                             <button
                               onClick={() => handleOpenEditModal(comp)}
                               className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                              title="Modifier le composant"
+                              title="Modifier ce liquide d'écriture"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
@@ -562,7 +641,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                                 setDeleteConfirmOpen(true);
                               }}
                               className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="Supprimer le composant"
+                              title="Supprimer ce liquide d'écriture"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -578,21 +657,21 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
         </div>
       </div>
 
-      {/* MODAL CRÉATION / MODIFICATION */}
+      {/* MODAL CRÉATION / MODIFICATION LIQUIDE D'ÉCRITURE */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-4 border-b border-gray-100">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
-                  <Cpu className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center">
+                  <Droplets className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">
-                    {editingComp ? 'Modifier le Composant IT' : 'Nouveau Composant IT & Consommable'}
+                    {editingComp ? "Modifier le Liquide d'écriture" : "Nouveau Liquide d'écriture"}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Modèle composant lié au matériel avec suivi de capacité et de stock.
+                    Lié à la référence interne du modèle matériel (partagé entre plusieurs machines).
                   </p>
                 </div>
               </div>
@@ -619,18 +698,18 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                    RÉF Composant (Unique) <span className="text-red-500">*</span>
+                    RÉF Liquide (Unique) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="Ex: COMP-TONER-01, RAM-16G-02..."
+                    placeholder="Ex: LIQ-HP-01, TONER-404..."
                     value={form.REF_composant}
-                    onChange={(e) => setForm({ ...form, REF_composant: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 font-mono focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
+                    onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
                   />
                   <span className="text-[11px] text-gray-400 mt-1 block">
-                    Saisie par le Responsable IT (référence unique système)
+                    Référence consommable interne (majuscules)
                   </span>
                 </div>
 
@@ -641,7 +720,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Toner Noir HP LaserJet, Barrette RAM..."
+                    placeholder="Ex: Encre Noire Haute Capacité, Toner HP 58A..."
                     value={form.nom}
                     onChange={(e) => setForm({ ...form, nom: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
@@ -649,48 +728,58 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </div>
               </div>
 
-              {/* Matériel Lié */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                  Matériel Informatique Lié <span className="text-red-500">*</span>
+              {/* Matériel Lié par Référence Interne (Modèle) */}
+              <div className="bg-purple-50/60 p-3.5 rounded-xl border border-purple-200 space-y-2">
+                <label className="block text-xs font-bold text-purple-900 uppercase tracking-wider">
+                  Référence Interne du Matériel Lié (Modèle) <span className="text-red-500">*</span>
                 </label>
-                <select
-                  required
-                  value={form.id_Materiel}
-                  onChange={(e) => setForm({ ...form, id_Materiel: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
-                >
-                  <option value="" disabled>Sélectionner le matériel lié...</option>
-                  {materiels.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.reference} — {m.designation} (S/N: {m.codeSerie})
-                    </option>
-                  ))}
-                </select>
-                <span className="text-[11px] text-gray-400 mt-1 block">
-                  Ce composant est rattaché à cet équipement et participe à son stock de groupe.
-                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-purple-700 font-medium mb-1">
+                      Choisir parmi les références existantes :
+                    </label>
+                    <select
+                      value={form.refMateriel}
+                      onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">-- Sélectionner un modèle --</option>
+                      {modelesRefs.map((mod) => (
+                        <option key={mod.ref} value={mod.ref}>
+                          {mod.ref} — {mod.designation} ({mod.count} appareil{mod.count > 1 ? 's' : ''})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-purple-700 font-medium mb-1">
+                      Ou saisie manuelle (enregistrée en majuscules) :
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: HP-M404"
+                      value={form.refMateriel}
+                      onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
+                      className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-purple-800">
+                  <Printer className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span>
+                    Deux imprimantes du même modèle partageant la référence <strong>{form.refMateriel || '...'}</strong> pourront utiliser ce liquide d'écriture.
+                  </span>
+                </div>
               </div>
 
-              {/* Capacité Type : Grammage vs Litrage */}
+              {/* Capacité Type : Litrage vs Grammage */}
               <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
                 <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                  Type de Capacité <span className="text-red-500">*</span>
+                  Type de Mesure de Capacité <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleCapaciteTypeChange('grammage')}
-                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
-                      form.capaciteType === 'grammage'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Scale className="w-4 h-4" />
-                    Grammage (Poids)
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => handleCapaciteTypeChange('litrage')}
@@ -701,7 +790,20 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                     }`}
                   >
                     <Droplets className="w-4 h-4" />
-                    Litrage (Volume)
+                    Litrage (Volume - Encre)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleCapaciteTypeChange('grammage')}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
+                      form.capaciteType === 'grammage'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                    }`}
+                  >
+                    <Scale className="w-4 h-4" />
+                    Grammage (Poids - Toner)
                   </button>
                 </div>
 
@@ -716,7 +818,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                       min="0.01"
                       step="any"
                       required
-                      placeholder="Ex: 500, 1.5, 2..."
+                      placeholder="Ex: 250, 500, 1.5..."
                       value={form.capaciteValeur}
                       onChange={(e) => setForm({ ...form, capaciteValeur: parseFloat(e.target.value) || 0 })}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -725,22 +827,22 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Unité de Mesure ({form.capaciteType === 'grammage' ? 'Grammage: g / kg' : 'Litrage: l / cl'}) <span className="text-red-500">*</span>
+                      Unité de Mesure ({form.capaciteType === 'litrage' ? 'Litrage: cl / l' : 'Grammage: g / kg'}) <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={form.capaciteUnite}
                       onChange={(e) => setForm({ ...form, capaciteUnite: e.target.value as CapaciteUnite })}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
                     >
-                      {form.capaciteType === 'grammage' ? (
+                      {form.capaciteType === 'litrage' ? (
                         <>
-                          <option value="g">g (Grammes)</option>
-                          <option value="kg">kg (Kilogrammes)</option>
+                          <option value="cl">cl (Centilitres)</option>
+                          <option value="l">l (Litres)</option>
                         </>
                       ) : (
                         <>
-                          <option value="l">l (Litres)</option>
-                          <option value="cl">cl (Centilitres)</option>
+                          <option value="g">g (Grammes)</option>
+                          <option value="kg">kg (Kilogrammes)</option>
                         </>
                       )}
                     </select>
@@ -795,12 +897,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                   {form.utilisation === '0%' ? (
                     <p className="flex items-center gap-1.5 font-medium">
                       <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span><strong>Règle de stockage :</strong> Ce composant est à 0% d'utilisation, il <strong>appartient au stockage disponible</strong>.</span>
+                      <span><strong>Règle de stockage :</strong> Ce liquide d'écriture est à 0% d'utilisation, il <strong>appartient au stock disponible</strong>.</span>
                     </p>
                   ) : (
                     <p className="flex items-center gap-1.5 font-medium">
                       <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span><strong>Règle de stockage :</strong> Niveau à {form.utilisation}, le composant n'est plus en stock disponible (<strong>Stock - 1</strong>).</span>
+                      <span><strong>Règle de stockage :</strong> Niveau à {form.utilisation}, le liquide d'écriture est sorti du stock (<strong>Stock - 1</strong>).</span>
                     </p>
                   )}
                 </div>
@@ -813,7 +915,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Notes techniques, fabricant, numéro de lot..."
+                  placeholder="Notes techniques, compatibilité modèles, couleur d'encre..."
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
@@ -834,7 +936,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                   disabled={isSaving}
                   className="px-5 py-2 bg-red-600 text-white font-medium text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer flex items-center gap-2 shadow-sm"
                 >
-                  {isSaving ? 'Enregistrement...' : editingComp ? 'Mettre à jour' : 'Créer le Composant'}
+                  {isSaving ? 'Enregistrement...' : editingComp ? 'Mettre à jour' : "Créer le Liquide d'écriture"}
                 </button>
               </div>
             </form>
@@ -845,21 +947,22 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       {/* MODAL CONFIRMATION SUPPRESSION */}
       <CustomConfirmModal
         isOpen={deleteConfirmOpen}
-        title="Supprimer ce composant IT ?"
+        title="Supprimer ce liquide d'écriture ?"
         message={
           compToDelete
-            ? `Êtes-vous certain de vouloir supprimer le composant "${compToDelete.nom}" (Réf: ${compToDelete.REF_composant}) ? Cette action est irréversible.`
+            ? `Êtes-vous certain de vouloir supprimer le liquide d'écriture "${compToDelete.nom}" (Réf: ${compToDelete.REF_composant}) ? Cette action est irréversible.`
             : ''
         }
         confirmText="Supprimer définitivement"
         cancelText="Annuler"
         type="danger"
-        itemsListTitle="Détails du composant à supprimer"
+        itemsListTitle="Détails du liquide d'écriture à supprimer"
         itemsList={
           compToDelete
             ? [
                 { label: 'Référence', sublabel: compToDelete.REF_composant },
                 { label: 'Désignation', sublabel: compToDelete.nom },
+                { label: 'Réf. Matériel Lié', sublabel: compToDelete.refMateriel || compToDelete.id_Materiel },
                 { label: 'Capacité', sublabel: `${compToDelete.capaciteValeur} ${compToDelete.capaciteUnite}` },
                 { label: 'Utilisation', sublabel: compToDelete.utilisation },
               ]
@@ -874,3 +977,5 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     </div>
   );
 };
+
+export const LiquidesEcritureSection = ComposantsSection;
