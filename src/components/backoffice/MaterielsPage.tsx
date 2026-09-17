@@ -123,33 +123,22 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
   // Optional Components / Consumables sub-form inside Materiel Modal (0, 1 or multiple components)
   const [formComposants, setFormComposants] = useState<MatFormComposantItem[]>([]);
 
-  const handleAddFormComposant = (presetType?: 'litrage' | 'grammage') => {
+  const handleAddFormComposant = (_presetType?: 'litrage' | 'grammage') => {
     const isPrinter = matForm.designation.toLowerCase().includes('imprim') ||
                       matForm.designation.toLowerCase().includes('print') ||
                       matForm.designation.toLowerCase().includes('traceur') ||
                       matForm.designation.toLowerCase().includes('copieur');
-    const type = presetType || (isPrinter ? 'litrage' : 'grammage');
 
-    let defaultName = '';
-    let defaultVal = 100;
-    let defaultUnite: 'g' | 'kg' | 'l' | 'cl' = 'g';
-
-    if (type === 'litrage') {
-      defaultName = isPrinter ? "Liquide d'écriture (Encre)" : "Liquide / Consommable";
-      defaultVal = 250;
-      defaultUnite = 'cl';
-    } else {
-      defaultName = isPrinter ? "Poudre Toner" : "Composant";
-      defaultVal = 100;
-      defaultUnite = 'g';
-    }
+    const defaultName = isPrinter ? "Liquide d'écriture (Encre)" : "Liquide d'écriture";
+    const defaultVal = 250;
+    const defaultUnite: 'l' | 'cl' = 'cl';
 
     setFormComposants(prev => [
       ...prev,
       {
-        REF_composant: 'COMP-' + Math.floor(1000 + Math.random() * 9000),
+        REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
         nom: defaultName,
-        capaciteType: type,
+        capaciteType: 'litrage',
         capaciteValeur: defaultVal,
         capaciteUnite: defaultUnite,
         utilisation: '0%',
@@ -1661,21 +1650,11 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                     <button
                       type="button"
                       onClick={() => handleAddFormComposant('litrage')}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-xl transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-xl transition-colors cursor-pointer"
                       title="Ajouter un liquide d'écriture (ex: cartouche d'encre / réservoir liquide)"
                     >
                       <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                      <span>+ Liquide d'écriture (Litrage)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleAddFormComposant('grammage')}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
-                      title="Ajouter un consommable mesuré au poids (ex: toner en poudre)"
-                    >
-                      <Plus className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>+ Toner / Poudre (Grammage)</span>
+                      <span>+ Liquide d'écriture</span>
                     </button>
                   </div>
                 </div>
@@ -1689,25 +1668,17 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                     <div>
                       <p className="text-xs font-bold text-gray-700">Aucun liquide d'écriture associé</p>
                       <p className="text-[11px] text-gray-400 mt-0.5 max-w-md mx-auto">
-                        Ce matériel sera enregistré sans liquide d'écriture. Pour les imprimantes ou copieurs, vous pouvez en associer un ou plusieurs ci-dessous (reliés à la référence interne du modèle).
+                        Ce matériel est enregistré sans liquide lié (pour PC, écrans...). Pour les imprimantes ou copieurs, associez ci-dessous un liquide d'écriture relié à la référence modèle ({matForm.reference || 'REF'}).
                       </p>
                     </div>
                     <div className="pt-1 flex flex-wrap justify-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleAddFormComposant('litrage')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg cursor-pointer transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-lg cursor-pointer transition-colors"
                       >
                         <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                        <span>Associer un liquide d'écriture (Litrage)</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAddFormComposant('grammage')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg cursor-pointer transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Associer un toner / poudre (Grammage)</span>
+                        <span>Associer un liquide d'écriture</span>
                       </button>
                     </div>
                   </div>
@@ -1754,7 +1725,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-gray-700 mb-1">
                                 Réf. Liquide <span className="text-red-500">*</span>
@@ -1780,26 +1751,12 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                                 className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-1 focus:ring-black"
                               />
                             </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Type de capacité
-                              </label>
-                              <select
-                                value={comp.capaciteType}
-                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteType: e.target.value as 'grammage' | 'litrage' })}
-                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white cursor-pointer"
-                              >
-                                <option value="litrage">Litrage (Liquide d'écriture, encre...)</option>
-                                <option value="grammage">Grammage (Poudre, cartouche, poids...)</option>
-                              </select>
-                            </div>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                             <div>
                               <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Valeur Capacité <span className="text-red-500">*</span>
+                                Volume Capacité <span className="text-red-500">*</span>
                               </label>
                               <input
                                 type="number"
@@ -1814,24 +1771,15 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
 
                             <div>
                               <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Unité {comp.capaciteType === 'litrage' ? '(Litrage)' : '(Grammage)'}
+                                Unité (Litrage)
                               </label>
                               <select
                                 value={comp.capaciteUnite}
-                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteUnite: e.target.value as 'g' | 'kg' | 'l' | 'cl' })}
+                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteUnite: e.target.value as 'l' | 'cl', capaciteType: 'litrage' })}
                                 className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white cursor-pointer"
                               >
-                                {comp.capaciteType === 'litrage' ? (
-                                  <>
-                                    <option value="cl">cl (Centilitres)</option>
-                                    <option value="l">l (Litres)</option>
-                                  </>
-                                ) : (
-                                  <>
-                                    <option value="g">g (Grammes)</option>
-                                    <option value="kg">kg (Kilogrammes)</option>
-                                  </>
-                                )}
+                                <option value="cl">cl (Centilitres)</option>
+                                <option value="l">l (Litres)</option>
                               </select>
                             </div>
 

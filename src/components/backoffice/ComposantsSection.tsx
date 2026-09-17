@@ -8,7 +8,6 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
-  Scale,
   Package,
   Layers,
   Percent,
@@ -95,7 +94,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     const defaultRef = modelesRefs.length > 0 ? modelesRefs[0].ref : '';
     setForm({
       REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
-      nom: "Liquide d'écriture (Encre / Toner)",
+      nom: "Liquide d'écriture (Encre)",
       refMateriel: defaultRef,
       capaciteType: 'litrage',
       capaciteUnite: 'cl',
@@ -122,15 +121,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       description: comp.description || '',
     });
     setIsModalOpen(true);
-  };
-
-  // Changement dynamique du type de capacité (litrage -> l/cl, grammage -> g/kg)
-  const handleCapaciteTypeChange = (type: CapaciteType) => {
-    setForm((prev) => ({
-      ...prev,
-      capaciteType: type,
-      capaciteUnite: type === 'litrage' ? 'cl' : 'g',
-    }));
   };
 
   // Sauvegarde (Création / Modification)
@@ -260,8 +250,8 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       matchesMateriel = cRefUpper === selectedMaterielFilter.toUpperCase() || c.id_Materiel === selectedMaterielFilter;
     }
 
-    // Filtre Type
-    const matchesType = selectedTypeFilter === 'all' || c.capaciteType === selectedTypeFilter;
+    // Filtre Unité (cl / l)
+    const matchesType = selectedTypeFilter === 'all' || c.capaciteUnite === selectedTypeFilter || c.capaciteType === selectedTypeFilter;
 
     // Filtre Stock
     let matchesStock = true;
@@ -421,16 +411,16 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
             ))}
           </select>
 
-          {/* Filtre Type (Litrage / Grammage) */}
+          {/* Filtre Unité (cl / l) */}
           <select
             id="filter-capacite-type"
             value={selectedTypeFilter}
             onChange={(e) => setSelectedTypeFilter(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
           >
-            <option value="all">Tous types de mesure</option>
-            <option value="litrage">💧 Litrage (l / cl - Encre)</option>
-            <option value="grammage">⚖️ Grammage (g / kg - Toner)</option>
+            <option value="all">Toutes unités (cl / l)</option>
+            <option value="cl">💧 Centilitres (cl)</option>
+            <option value="l">💧 Litres (l)</option>
           </select>
 
           {/* Filtre Disponibilité Stock */}
@@ -561,19 +551,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                         )}
                       </td>
 
-                      {/* Capacité (Litrage ou Grammage) */}
+                      {/* Capacité (Litrage en cl ou l) */}
                       <td className="py-3 px-4">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">
-                          {comp.capaciteType === 'litrage' ? (
-                            <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                          ) : (
-                            <Scale className="w-3.5 h-3.5 text-indigo-600" />
-                          )}
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200/80">
+                          <Droplets className="w-3.5 h-3.5 text-cyan-600" />
                           <span>
-                            {comp.capaciteValeur} {comp.capaciteUnite}
-                          </span>
-                          <span className="text-[10px] text-gray-500">
-                            ({comp.capaciteType === 'litrage' ? 'Volume' : 'Poids'})
+                            {comp.capaciteValeur} {comp.capaciteUnite || 'cl'}
                           </span>
                         </div>
                       </td>
@@ -703,7 +686,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="Ex: LIQ-HP-01, TONER-404..."
+                    placeholder="Ex: LIQ-HP-01, ENCRE-404..."
                     value={form.REF_composant}
                     onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
@@ -720,7 +703,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                   <input
                     type="text"
                     required
-                    placeholder="Ex: Encre Noire Haute Capacité, Toner HP 58A..."
+                    placeholder="Ex: Encre Noire Haute Capacité, Flacon Cyan..."
                     value={form.nom}
                     onChange={(e) => setForm({ ...form, nom: e.target.value })}
                     className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
@@ -774,51 +757,27 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </div>
               </div>
 
-              {/* Capacité Type : Litrage vs Grammage */}
+              {/* Capacité & Volume du Liquide d'écriture */}
               <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
-                <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                  Type de Mesure de Capacité <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleCapaciteTypeChange('litrage')}
-                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
-                      form.capaciteType === 'litrage'
-                        ? 'bg-cyan-600 text-white border-cyan-600 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Droplets className="w-4 h-4" />
-                    Litrage (Volume - Encre)
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCapaciteTypeChange('grammage')}
-                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg border text-sm font-semibold transition-all cursor-pointer ${
-                      form.capaciteType === 'grammage'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Scale className="w-4 h-4" />
-                    Grammage (Poids - Toner)
-                  </button>
+                <div className="flex items-center gap-2">
+                  <Droplets className="w-4 h-4 text-cyan-600" />
+                  <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                    Volume & Capacité du Liquide d'écriture <span className="text-red-500">*</span>
+                  </label>
                 </div>
 
-                {/* Valeur et Unité Conditionnelle */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                {/* Valeur et Unité */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Valeur de Capacité <span className="text-red-500">*</span>
+                      Volume / Capacité <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
                       min="0.01"
                       step="any"
                       required
-                      placeholder="Ex: 250, 500, 1.5..."
+                      placeholder="Ex: 250, 500, 1..."
                       value={form.capaciteValeur}
                       onChange={(e) => setForm({ ...form, capaciteValeur: parseFloat(e.target.value) || 0 })}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -827,24 +786,15 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
 
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Unité de Mesure ({form.capaciteType === 'litrage' ? 'Litrage: cl / l' : 'Grammage: g / kg'}) <span className="text-red-500">*</span>
+                      Unité de Mesure <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={form.capaciteUnite}
                       onChange={(e) => setForm({ ...form, capaciteUnite: e.target.value as CapaciteUnite })}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
                     >
-                      {form.capaciteType === 'litrage' ? (
-                        <>
-                          <option value="cl">cl (Centilitres)</option>
-                          <option value="l">l (Litres)</option>
-                        </>
-                      ) : (
-                        <>
-                          <option value="g">g (Grammes)</option>
-                          <option value="kg">kg (Kilogrammes)</option>
-                        </>
-                      )}
+                      <option value="cl">cl (Centilitres)</option>
+                      <option value="l">l (Litres)</option>
                     </select>
                   </div>
                 </div>

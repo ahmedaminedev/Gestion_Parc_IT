@@ -1081,9 +1081,9 @@ class ITParkService {
       nom: (comp.nom || cleanRef).trim(),
       refMateriel: cleanRefMateriel,
       id_Materiel: cleanRefMateriel,
-      capaciteType: comp.capaciteType || 'grammage',
+      capaciteType: comp.capaciteType || 'litrage',
       capaciteValeur: Number(comp.capaciteValeur) || 0,
-      capaciteUnite: (comp.capaciteUnite || comp.unite || 'g') as any,
+      capaciteUnite: (comp.capaciteUnite || comp.unite || 'cl') as any,
       utilisation: comp.utilisation || '0%',
       remarques: comp.remarques,
     };
