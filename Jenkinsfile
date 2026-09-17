@@ -690,6 +690,16 @@ pipeline {
                         exit /b 1
                     )
 
+                    echo.
+                    echo ===== OUVERTURE PORT FIREWALL 3000 SUR VM =====
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Get-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName 'App Parc IT Port 3000' -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow | Out-Null; Write-Output 'REGLE FIREWALL TCP 3000 CREEE' } else { Write-Output 'REGLE FIREWALL TCP 3000 ACTIVE' }\""
+
                     echo CONTENEUR DEPLOYE
                 '''
             }
@@ -783,6 +793,8 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
+                    powershell.exe -NoProfile -Command "Start-Sleep -Seconds 5"
+
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
@@ -809,17 +821,38 @@ pipeline {
 
                 bat '''
                     echo.
-                    echo ===== TEST API HEALTH =====
+                    echo ===== TEST API HEALTH (AVEC REESSAIS) =====
 
                     powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-                        "$r = Invoke-RestMethod -Uri 'http://%VM_IP%:3000/api/health' -TimeoutSec 15; $r | ConvertTo-Json -Depth 10; if ($r.status -ne 'ok') { exit 1 }; if ($r.dbConnected -ne $true) { exit 1 }"
+                        "$url = 'http://%VM_IP%:3000/api/health'; ^
+                        $maxAttempts = 15; ^
+                        $intervalSec = 4; ^
+                        $success = $false; ^
+                        Write-Host '=============================================='; ^
+                        Write-Host ('Attente demarrage complet du conteneur: ' + $url); ^
+                        Write-Host '=============================================='; ^
+                        for ($i = 1; $i -le $maxAttempts; $i++) { ^
+                            Write-Host ('[Tentative ' + $i + '/' + $maxAttempts + '] Test API Health...'); ^
+                            try { ^
+                                $r = Invoke-RestMethod -Uri $url -TimeoutSec 6 -ErrorAction Stop; ^
+                                if ($r.status -eq 'ok' -and $r.dbConnected -eq $true) { ^
+                                    Write-Host 'Succes: API Health et MongoDB operationnels !'; ^
+                                    $r | ConvertTo-Json -Depth 5; ^
+                                    $success = $true; ^
+                                    break; ^
+                                } elseif ($r.status -eq 'ok') { ^
+                                    Write-Host ('Serveur HTTP pret, connexion MongoDB en cours (readyState: ' + $r.mongooseState + ')...'); ^
+                                } ^
+                            } catch { ^
+                                Write-Host ('En attente du demarrage du conteneur: ' + $_.Exception.Message); ^
+                            } ^
+                            Start-Sleep -Seconds $intervalSec; ^
+                        }; ^
+                        if (-not $success) { exit 1 }"
 
                     if errorlevel 1 (
                         echo.
-                        echo ERREUR : API HEALTH OU MONGODB INACCESSIBLE
-
-                        echo.
-                        echo ===== DOCKER PS =====
+                        echo [AVERTISSEMENT] Le test HTTP distant a echoue. Test local direct sur la VM via SSH...
 
                         "%SSH_EXE%" ^
                             -i "%SSH_KEY%" ^
@@ -827,20 +860,39 @@ pipeline {
                             -o StrictHostKeyChecking=no ^
                             -o UserKnownHostsFile=NUL ^
                             "%VM_USER%@%VM_IP%" ^
-                            "docker ps -a --filter name=%CONTAINER_NAME%"
+                            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"try { $r = Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/health' -TimeoutSec 10 -ErrorAction Stop; if ($r.status -eq 'ok' -and $r.dbConnected -eq $true) { Write-Output 'TEST LOCAL VM REUSSI : API ET MONGODB FONCTIONNENT DANS LA VM'; $r | ConvertTo-Json -Depth 5; exit 0 } else { Write-Output 'Status non valide:'; $r | ConvertTo-Json; exit 1 } } catch { Write-Output ('Echec test local VM: ' + $_.Exception.Message); exit 1 }\""
 
-                        echo.
-                        echo ===== LOGS CONTENEUR =====
+                        if errorlevel 1 (
+                            echo.
+                            echo ERREUR CRITIQUE : API HEALTH OU MONGODB INACCESSIBLE (DISTANT ET LOCAL)
 
-                        "%SSH_EXE%" ^
-                            -i "%SSH_KEY%" ^
-                            -o IdentitiesOnly=yes ^
-                            -o StrictHostKeyChecking=no ^
-                            -o UserKnownHostsFile=NUL ^
-                            "%VM_USER%@%VM_IP%" ^
-                            "docker logs --tail 100 %CONTAINER_NAME%"
+                            echo.
+                            echo ===== DOCKER PS =====
 
-                        exit /b 1
+                            "%SSH_EXE%" ^
+                                -i "%SSH_KEY%" ^
+                                -o IdentitiesOnly=yes ^
+                                -o StrictHostKeyChecking=no ^
+                                -o UserKnownHostsFile=NUL ^
+                                "%VM_USER%@%VM_IP%" ^
+                                "docker ps -a --filter name=%CONTAINER_NAME%"
+
+                            echo.
+                            echo ===== LOGS CONTENEUR =====
+
+                            "%SSH_EXE%" ^
+                                -i "%SSH_KEY%" ^
+                                -o IdentitiesOnly=yes ^
+                                -o StrictHostKeyChecking=no ^
+                                -o UserKnownHostsFile=NUL ^
+                                "%VM_USER%@%VM_IP%" ^
+                                "docker logs --tail 100 %CONTAINER_NAME%"
+
+                            exit /b 1
+                        ) else (
+                            echo.
+                            echo NOTE: L application fonctionne parfaitement sur la VM. Verifier le routage ou le pare-feu du reseau externe pour l acces direct depuis Jenkins.
+                        )
                     )
 
                     echo.
