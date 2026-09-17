@@ -31,7 +31,11 @@ export async function connectDB() {
   }
 
   try {
-    mongoMemoryServer = await MongoMemoryServer.create();
+    const createMemoryServerPromise = MongoMemoryServer.create();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('MongoMemoryServer initialization timed out (5s limit)')), 5000)
+    );
+    mongoMemoryServer = await Promise.race([createMemoryServerPromise, timeoutPromise]);
     const memoryUri = mongoMemoryServer.getUri();
     await mongoose.connect(memoryUri, {
       dbName: 'Gestion_Parc_IT_2',
