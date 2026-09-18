@@ -1049,8 +1049,8 @@ export async function validateComposantData(
   data.refMateriel = resolvedRef;
   data.id_Materiel = resolvedRef;
 
-  // 4. Capacité : type enumerate ('grammage' | 'litrage')
-  if (!capaciteType || !['grammage', 'litrage'].includes(capaciteType)) {
+  // 4. Capacité : type enumerate ('grammage' | 'litrage') - Optionnel
+  if (capaciteType && !['grammage', 'litrage'].includes(capaciteType)) {
     return {
       isValid: false,
       message: 'Le type de capacité doit être soit "grammage" soit "litrage".',
@@ -1058,42 +1058,36 @@ export async function validateComposantData(
     };
   }
 
-  // 5. Unité de capacité conditionnelle :
-  // - En cas de sélection grammage -> g ou kg
-  // - En cas de sélection litrage -> l ou cl
-  if (!capaciteUnite) {
-    return {
-      isValid: false,
-      message: 'L\'unité de mesure de la capacité est obligatoire.',
-      field: 'capaciteUnite',
-    };
-  }
-
-  if (capaciteType === 'grammage') {
-    if (!['g', 'kg'].includes(capaciteUnite)) {
-      return {
-        isValid: false,
-        message: 'Pour une capacité en grammage, l\'unité doit être obligatoirement "g" (grammes) ou "kg" (kilogrammes).',
-        field: 'capaciteUnite',
-      };
-    }
-  } else if (capaciteType === 'litrage') {
-    if (!['l', 'cl'].includes(capaciteUnite)) {
-      return {
-        isValid: false,
-        message: 'Pour une capacité en litrage, l\'unité doit être obligatoirement "l" (litres) ou "cl" (centilitres).',
-        field: 'capaciteUnite',
-      };
+  // 5. Unité de capacité conditionnelle - Optionnel
+  if (capaciteType && capaciteUnite) {
+    if (capaciteType === 'grammage') {
+      if (!['g', 'kg'].includes(capaciteUnite)) {
+        return {
+          isValid: false,
+          message: 'Pour une capacité en grammage, l\'unité doit être obligatoirement "g" (grammes) ou "kg" (kilogrammes).',
+          field: 'capaciteUnite',
+        };
+      }
+    } else if (capaciteType === 'litrage') {
+      if (!['l', 'cl'].includes(capaciteUnite)) {
+        return {
+          isValid: false,
+          message: 'Pour une capacité en litrage, l\'unité doit être obligatoirement "l" (litres) ou "cl" (centilitres).',
+          field: 'capaciteUnite',
+        };
+      }
     }
   }
 
-  // 6. Valeur numérique de capacité
-  if (capaciteValeur === undefined || capaciteValeur === null || isNaN(Number(capaciteValeur)) || Number(capaciteValeur) <= 0) {
-    return {
-      isValid: false,
-      message: 'La valeur de capacité doit être un nombre strictement positif (> 0).',
-      field: 'capaciteValeur',
-    };
+  // 6. Valeur numérique de capacité - Optionnel
+  if (capaciteValeur !== undefined && capaciteValeur !== null && capaciteValeur !== '') {
+    if (isNaN(Number(capaciteValeur)) || Number(capaciteValeur) < 0) {
+      return {
+        isValid: false,
+        message: 'La valeur de capacité doit être un nombre positif (>= 0).',
+        field: 'capaciteValeur',
+      };
+    }
   }
 
   // 7. Utilisation : enumerate "0%", "25%", "50%", "75%", "100%"

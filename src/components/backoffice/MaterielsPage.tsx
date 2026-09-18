@@ -37,9 +37,9 @@ export interface MatFormComposantItem {
   id?: string;
   REF_composant: string;
   nom: string;
-  capaciteType: 'grammage' | 'litrage';
-  capaciteValeur: number | '';
-  capaciteUnite: 'g' | 'kg' | 'l' | 'cl';
+  capaciteType?: 'grammage' | 'litrage';
+  capaciteValeur?: number | '';
+  capaciteUnite?: 'g' | 'kg' | 'l' | 'cl';
   utilisation: '0%' | '25%' | '50%' | '75%' | '100%';
 }
 
@@ -410,31 +410,6 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
             setMatModalAlert({
               type: 'error',
               message: `Composant #${i + 1} (${cRef}) : Le nom / libellé du composant est obligatoire.`
-            });
-            setIsSaving(false);
-            return;
-          }
-          const val = Number(c.capaciteValeur);
-          if (!val || val <= 0 || isNaN(val)) {
-            setMatModalAlert({
-              type: 'error',
-              message: `Composant #${i + 1} (${cNom}) : La valeur de capacité doit être un nombre strictement positif (> 0).`
-            });
-            setIsSaving(false);
-            return;
-          }
-          if (c.capaciteType === 'grammage' && c.capaciteUnite !== 'g' && c.capaciteUnite !== 'kg') {
-            setMatModalAlert({
-              type: 'error',
-              message: `Composant #${i + 1} (${cNom}) : Pour le grammage, l'unité doit être "g" ou "kg".`
-            });
-            setIsSaving(false);
-            return;
-          }
-          if (c.capaciteType === 'litrage' && c.capaciteUnite !== 'l' && c.capaciteUnite !== 'cl') {
-            setMatModalAlert({
-              type: 'error',
-              message: `Composant #${i + 1} (${cNom}) : Pour le litrage, l'unité doit être "l" ou "cl".`
             });
             setIsSaving(false);
             return;
@@ -1753,52 +1728,21 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            <div>
-                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Volume Capacité <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                min="0.1"
-                                step="any"
-                                value={comp.capaciteValeur}
-                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteValeur: e.target.value === '' ? '' : Number(e.target.value) })}
-                                placeholder="ex: 250"
-                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-1 focus:ring-black"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Unité (Litrage)
-                              </label>
-                              <select
-                                value={comp.capaciteUnite}
-                                onChange={(e) => handleUpdateFormComposant(idx, { capaciteUnite: e.target.value as 'l' | 'cl', capaciteType: 'litrage' })}
-                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-semibold focus:bg-white cursor-pointer"
-                              >
-                                <option value="cl">cl (Centilitres)</option>
-                                <option value="l">l (Litres)</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-gray-700 mb-1">
-                                Taux d'utilisation / Consommation
-                              </label>
-                              <select
-                                value={comp.utilisation}
-                                onChange={(e) => handleUpdateFormComposant(idx, { utilisation: e.target.value as any })}
-                                className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold focus:bg-white cursor-pointer"
-                              >
-                                <option value="0%">0% (Neuf - En stock)</option>
-                                <option value="25%">25% (Entamé - 1/4 utilisé)</option>
-                                <option value="50%">50% (À moitié consommé)</option>
-                                <option value="75%">75% (Presque vide - 3/4 utilisé)</option>
-                                <option value="100%">100% (Épuisé / Vide)</option>
-                              </select>
-                            </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                              Taux d'utilisation / Consommation
+                            </label>
+                            <select
+                              value={comp.utilisation}
+                              onChange={(e) => handleUpdateFormComposant(idx, { utilisation: e.target.value as any })}
+                              className="w-full px-2.5 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold focus:bg-white cursor-pointer"
+                            >
+                              <option value="0%">0% (Neuf - En stock)</option>
+                              <option value="25%">25% (Entamé - 1/4 utilisé)</option>
+                              <option value="50%">50% (À moitié consommé)</option>
+                              <option value="75%">75% (Presque vide - 3/4 utilisé)</option>
+                              <option value="100%">100% (Épuisé / Vide)</option>
+                            </select>
                           </div>
 
                           {/* Visual Consumption Gauge */}
@@ -1809,7 +1753,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                                 Niveau restant de consommable :
                               </span>
                               <span className={`font-mono font-bold ${remainPercent > 50 ? 'text-emerald-700' : remainPercent > 20 ? 'text-amber-700' : 'text-red-600'}`}>
-                                {remainPercent}% restant ({comp.capaciteValeur ? `${(Number(comp.capaciteValeur) * remainPercent / 100).toFixed(1)} ${comp.capaciteUnite}` : '—'})
+                                {remainPercent}% restant{comp.capaciteValeur ? ` (${(Number(comp.capaciteValeur) * remainPercent / 100).toFixed(1)} ${comp.capaciteUnite || 'cl'})` : ''}
                               </span>
                             </div>
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">

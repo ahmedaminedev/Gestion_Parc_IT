@@ -76,20 +76,7 @@ describe('Composant & Stock Management Test Suite', () => {
       expect(result.message).toContain('Le type de capacité doit être soit "grammage" soit "litrage"');
     });
 
-    it('rejects non-positive capaciteValeur', async () => {
-      const resultZero = await validateComposantData({
-        REF_composant: 'COMP-001',
-        nom: 'Pâte thermique',
-        id_Materiel: 'mat-test',
-        capaciteType: 'grammage',
-        capaciteValeur: 0,
-        capaciteUnite: 'g',
-        utilisation: '0%'
-      });
-      expect(resultZero.isValid).toBe(false);
-      expect(resultZero.field).toBe('capaciteValeur');
-      expect(resultZero.message).toContain('strictement positif');
-
+    it('rejects negative capaciteValeur when provided', async () => {
       const resultNegative = await validateComposantData({
         REF_composant: 'COMP-001',
         nom: 'Liquide refroidissement',
@@ -101,6 +88,16 @@ describe('Composant & Stock Management Test Suite', () => {
       });
       expect(resultNegative.isValid).toBe(false);
       expect(resultNegative.field).toBe('capaciteValeur');
+    });
+
+    it('accepts composant without capacite fields (Volume and Unite are optional)', async () => {
+      const resultNoCap = await validateComposantData({
+        REF_composant: 'COMP-NOCAP',
+        nom: 'Liquide d\'écriture Noir',
+        id_Materiel: 'mat-test',
+        utilisation: '0%'
+      });
+      expect(resultNoCap.isValid).toBe(true);
     });
 
     it('enforces unite matching: grammage allows only g and kg', async () => {

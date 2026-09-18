@@ -71,15 +71,26 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     return Array.from(map.values()).sort((a, b) => a.ref.localeCompare(b.ref));
   }, [materiels]);
 
+  interface ComposantFormState {
+    REF_composant: string;
+    nom: string;
+    refMateriel: string;
+    capaciteType?: CapaciteType;
+    capaciteUnite?: CapaciteUnite;
+    capaciteValeur?: number;
+    utilisation: TauxUtilisationComposant;
+    description: string;
+  }
+
   // Form State : lier à la référence interne en majuscules (refMateriel)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<ComposantFormState>({
     REF_composant: '',
     nom: '',
     refMateriel: '',
-    capaciteType: 'litrage' as CapaciteType,
-    capaciteUnite: 'cl' as CapaciteUnite,
+    capaciteType: 'litrage',
+    capaciteUnite: 'cl',
     capaciteValeur: 250,
-    utilisation: '0%' as TauxUtilisationComposant,
+    utilisation: '0%',
     description: '',
   });
 
@@ -154,14 +165,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       return;
     }
 
-    if (form.capaciteValeur <= 0 || isNaN(Number(form.capaciteValeur))) {
-      setModalAlert({
-        type: 'error',
-        message: 'La valeur de capacité doit être un nombre strictement positif (> 0).',
-      });
-      return;
-    }
-
     setIsSaving(true);
     try {
       const payload: Partial<Composant> = {
@@ -172,7 +175,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
         id_Materiel: cleanRefUpper,
         capaciteType: form.capaciteType,
         capaciteUnite: form.capaciteUnite,
-        capaciteValeur: Number(form.capaciteValeur),
+        capaciteValeur: form.capaciteValeur ? Number(form.capaciteValeur) : undefined,
         utilisation: form.utilisation,
         description: form.description.trim(),
       };
@@ -551,14 +554,18 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                         )}
                       </td>
 
-                      {/* Capacité (Litrage en cl ou l) */}
+                      {/* Capacité (si renseignée) */}
                       <td className="py-3 px-4">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200/80">
-                          <Droplets className="w-3.5 h-3.5 text-cyan-600" />
-                          <span>
-                            {comp.capaciteValeur} {comp.capaciteUnite || 'cl'}
-                          </span>
-                        </div>
+                        {comp.capaciteValeur ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200/80">
+                            <Droplets className="w-3.5 h-3.5 text-cyan-600" />
+                            <span>
+                              {comp.capaciteValeur} {comp.capaciteUnite || 'cl'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400 font-medium">—</span>
+                        )}
                       </td>
 
                       {/* Utilisation (0%, 25%, 50%, 75%, 100%) */}
@@ -757,49 +764,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </div>
               </div>
 
-              {/* Capacité & Volume du Liquide d'écriture */}
-              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Droplets className="w-4 h-4 text-cyan-600" />
-                  <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                    Volume & Capacité du Liquide d'écriture <span className="text-red-500">*</span>
-                  </label>
-                </div>
-
-                {/* Valeur et Unité */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Volume / Capacité <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="any"
-                      required
-                      placeholder="Ex: 250, 500, 1..."
-                      value={form.capaciteValeur}
-                      onChange={(e) => setForm({ ...form, capaciteValeur: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Unité de Mesure <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={form.capaciteUnite}
-                      onChange={(e) => setForm({ ...form, capaciteUnite: e.target.value as CapaciteUnite })}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    >
-                      <option value="cl">cl (Centilitres)</option>
-                      <option value="l">l (Litres)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
               {/* Taux d'Utilisation : "0%", "25%", "50%", "75%", "100%" */}
               <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-2">
                 <div className="flex items-center justify-between">
@@ -913,7 +877,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 { label: 'Référence', sublabel: compToDelete.REF_composant },
                 { label: 'Désignation', sublabel: compToDelete.nom },
                 { label: 'Réf. Matériel Lié', sublabel: compToDelete.refMateriel || compToDelete.id_Materiel },
-                { label: 'Capacité', sublabel: `${compToDelete.capaciteValeur} ${compToDelete.capaciteUnite}` },
+                { label: 'Capacité', sublabel: compToDelete.capaciteValeur ? `${compToDelete.capaciteValeur} ${compToDelete.capaciteUnite || 'cl'}` : '—' },
                 { label: 'Utilisation', sublabel: compToDelete.utilisation },
               ]
             : []

@@ -189,9 +189,9 @@ export interface LiquideEcriture {
     codeSerie?: string;
     statut?: string;
   }>;
-  capaciteType: CapaciteType; // 'grammage' ou 'litrage'
-  capaciteUnite: CapaciteUnite; // si grammage -> 'g' | 'kg', si litrage -> 'l' | 'cl'
-  capaciteValeur: number;
+  capaciteType?: CapaciteType; // 'grammage' ou 'litrage' (optionnel)
+  capaciteUnite?: CapaciteUnite; // si grammage -> 'g' | 'kg', si litrage -> 'l' | 'cl' (optionnel)
+  capaciteValeur?: number; // (optionnel)
   utilisation: TauxUtilisationLiquide; // "0%", "25%", "50%", "75%", "100%"
   enStock?: boolean; // Règle métier : true uniquement si utilisation === '0%', sinon stock - 1
   remarques?: string;

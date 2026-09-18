@@ -10,9 +10,9 @@ export interface ILiquideEcriture extends Document {
   nom: string;
   refMateriel: string;
   id_Materiel?: string;
-  capaciteType: CapaciteType;
-  capaciteUnite: CapaciteUnite;
-  capaciteValeur: number;
+  capaciteType?: CapaciteType;
+  capaciteUnite?: CapaciteUnite;
+  capaciteValeur?: number;
   utilisation: TauxUtilisation;
   dateEntree: string;
   description?: string;
@@ -49,18 +49,21 @@ const LiquideEcritureSchema: Schema = new Schema(
     },
     capaciteType: {
       type: String,
-      required: true,
-      enum: ['grammage', 'litrage'],
+      required: false,
+      enum: ['grammage', 'litrage', null, ''],
+      default: 'litrage',
     },
     capaciteUnite: {
       type: String,
-      required: true,
-      enum: ['g', 'kg', 'l', 'cl'],
+      required: false,
+      enum: ['g', 'kg', 'l', 'cl', null, ''],
+      default: 'cl',
     },
     capaciteValeur: {
       type: Number,
-      required: true,
+      required: false,
       min: 0,
+      default: 0,
     },
     utilisation: {
       type: String,
