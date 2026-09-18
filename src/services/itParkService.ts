@@ -144,6 +144,7 @@ class ITParkService {
             id_Emplacement: m.id_Emplacement || '',
             id_Beneficiaire: m.id_Beneficiaire || '',
             image: m.image,
+            isImprimante: m.isImprimante !== undefined ? !!m.isImprimante : undefined,
           }));
         }
       }

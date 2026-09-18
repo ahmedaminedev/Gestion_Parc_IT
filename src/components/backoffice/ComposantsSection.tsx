@@ -19,8 +19,6 @@ import {
   Composant,
   LiquideEcriture,
   Materiel,
-  CapaciteType,
-  CapaciteUnite,
   TauxUtilisationComposant,
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
@@ -46,7 +44,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   // Filtres
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMaterielFilter, setSelectedMaterielFilter] = useState<string>('all');
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all');
   const [selectedStockFilter, setSelectedStockFilter] = useState<string>('all');
 
   // Modal Ajout / Modification
@@ -54,7 +51,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const [editingComp, setEditingComp] = useState<Composant | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Modèles / Références internes uniques de matériels (imprimantes, etc.)
+  // Modèles / Références internes uniques de matériels (toutes catégories)
   const modelesRefs = useMemo(() => {
     const map = new Map<string, { ref: string; designation: string; count: number; machines: Materiel[] }>();
     for (const m of materiels) {
@@ -71,13 +68,79 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     return Array.from(map.values()).sort((a, b) => a.ref.localeCompare(b.ref));
   }, [materiels]);
 
+  // Liste des imprimantes éligibles pour l'association d'un liquide d'écriture :
+  // - Cochée comme imprimante (isImprimante === true) OU catégorie de groupe "Imprimante" OU désignation imprimante
+  // - ET ayant un liquide de 0% (c'est-à-dire vide) OU sans aucun liquide associé (ou actuellement liée si modification)
+  const imprimantesDisponibles = useMemo(() => {
+    const allGroups = itParkService.getGroupesMateriel();
+    const map = new Map<string, {
+      ref: string;
+      designation: string;
+      count: number;
+      machines: Materiel[];
+      statutLiquide: string;
+    }>();
+
+    for (const m of materiels) {
+      const r = (m.reference || '').trim().toUpperCase();
+      if (!r) continue;
+
+      // 1. Critère Imprimante :
+      const grp = allGroups.find(g => g.id === m.id_GroupeMateriel);
+      const isGrpImprimante = !!grp && (
+        (grp.Groupe || '').toLowerCase().includes('imprim') ||
+        ((grp as any).nom || '').toLowerCase().includes('imprim')
+      );
+      const isDesigImprimante = (m.designation || '').toLowerCase().includes('imprim') ||
+                                (m.designation || '').toLowerCase().includes('printer') ||
+                                (m.designation || '').toLowerCase().includes('copieur');
+      const isImprimante = m.isImprimante === true || isGrpImprimante || isDesigImprimante;
+
+      if (!isImprimante) {
+        continue;
+      }
+
+      // 2. Critère Liquide à 0% (vide) ou sans liquide :
+      const linkedComps = composants.filter(c => {
+        const cRef = (c.refMateriel || c.id_Materiel || '').trim().toUpperCase();
+        return cRef === r || c.id_Materiel === m.id;
+      });
+
+      const isCurrentlyLinked = editingComp && (editingComp.refMateriel || '').toUpperCase() === r;
+      const hasNoLiquide = linkedComps.length === 0;
+      const hasZeroPercentLiquide = linkedComps.some(c => c.utilisation === '0%');
+
+      if (!hasNoLiquide && !hasZeroPercentLiquide && !isCurrentlyLinked) {
+        continue;
+      }
+
+      let statutLiquide = hasNoLiquide ? 'Sans liquide (Vide)' : 'Liquide à 0% (Vide)';
+      if (isCurrentlyLinked && !hasNoLiquide && !hasZeroPercentLiquide) {
+        statutLiquide = 'Actuellement assignée';
+      }
+
+      const entry = map.get(r);
+      if (entry) {
+        entry.count++;
+        entry.machines.push(m);
+      } else {
+        map.set(r, {
+          ref: r,
+          designation: m.designation,
+          count: 1,
+          machines: [m],
+          statutLiquide,
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.ref.localeCompare(b.ref));
+  }, [materiels, composants, editingComp]);
+
   interface ComposantFormState {
     REF_composant: string;
     nom: string;
     refMateriel: string;
-    capaciteType?: CapaciteType;
-    capaciteUnite?: CapaciteUnite;
-    capaciteValeur?: number;
     utilisation: TauxUtilisationComposant;
     description: string;
   }
@@ -87,9 +150,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     REF_composant: '',
     nom: '',
     refMateriel: '',
-    capaciteType: 'litrage',
-    capaciteUnite: 'cl',
-    capaciteValeur: 250,
     utilisation: '0%',
     description: '',
   });
@@ -102,14 +162,11 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const handleOpenCreateModal = () => {
     setModalAlert(null);
     setEditingComp(null);
-    const defaultRef = modelesRefs.length > 0 ? modelesRefs[0].ref : '';
+    const defaultRef = imprimantesDisponibles.length > 0 ? imprimantesDisponibles[0].ref : '';
     setForm({
       REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
       nom: "Liquide d'écriture (Encre)",
       refMateriel: defaultRef,
-      capaciteType: 'litrage',
-      capaciteUnite: 'cl',
-      capaciteValeur: 250,
       utilisation: '0%',
       description: '',
     });
@@ -125,9 +182,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       REF_composant: comp.REF_composant,
       nom: comp.nom,
       refMateriel: currentRef,
-      capaciteType: comp.capaciteType,
-      capaciteUnite: comp.capaciteUnite,
-      capaciteValeur: comp.capaciteValeur,
       utilisation: comp.utilisation,
       description: comp.description || '',
     });
@@ -173,9 +227,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
         nom: form.nom.trim(),
         refMateriel: cleanRefUpper,
         id_Materiel: cleanRefUpper,
-        capaciteType: form.capaciteType,
-        capaciteUnite: form.capaciteUnite,
-        capaciteValeur: form.capaciteValeur ? Number(form.capaciteValeur) : undefined,
         utilisation: form.utilisation,
         description: form.description.trim(),
       };
@@ -253,9 +304,6 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       matchesMateriel = cRefUpper === selectedMaterielFilter.toUpperCase() || c.id_Materiel === selectedMaterielFilter;
     }
 
-    // Filtre Unité (cl / l)
-    const matchesType = selectedTypeFilter === 'all' || c.capaciteUnite === selectedTypeFilter || c.capaciteType === selectedTypeFilter;
-
     // Filtre Stock
     let matchesStock = true;
     if (selectedStockFilter === 'en_stock') {
@@ -264,7 +312,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       matchesStock = c.utilisation !== '0%';
     }
 
-    return matchesSearch && matchesMateriel && matchesType && matchesStock;
+    return matchesSearch && matchesMateriel && matchesStock;
   });
 
   // Statistiques rapides
@@ -406,24 +454,12 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
             onChange={(e) => setSelectedMaterielFilter(e.target.value)}
             className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
           >
-            <option value="all">Toutes références matériels</option>
+            <option value="all">Toutes imprimantes / matériels</option>
             {modelesRefs.map((mod) => (
               <option key={mod.ref} value={mod.ref}>
                 {mod.ref} — {mod.designation} ({mod.count} appareil{mod.count > 1 ? 's' : ''})
               </option>
             ))}
-          </select>
-
-          {/* Filtre Unité (cl / l) */}
-          <select
-            id="filter-capacite-type"
-            value={selectedTypeFilter}
-            onChange={(e) => setSelectedTypeFilter(e.target.value)}
-            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-          >
-            <option value="all">Toutes unités (cl / l)</option>
-            <option value="cl">💧 Centilitres (cl)</option>
-            <option value="l">💧 Litres (l)</option>
           </select>
 
           {/* Filtre Disponibilité Stock */}
@@ -475,7 +511,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                     <Droplets className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="font-medium text-gray-700">Aucun liquide d'écriture trouvé</p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {searchTerm || selectedMaterielFilter !== 'all' || selectedTypeFilter !== 'all' || selectedStockFilter !== 'all'
+                      {searchTerm || selectedMaterielFilter !== 'all' || selectedStockFilter !== 'all'
                         ? 'Essayez de réinitialiser vos critères de recherche ou filtres.'
                         : "Enregistrez un nouveau liquide d'écriture lié à la référence interne de vos imprimantes."}
                     </p>
@@ -718,50 +754,50 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </div>
               </div>
 
-              {/* Matériel Lié par Référence Interne (Modèle) */}
-              <div className="bg-purple-50/60 p-3.5 rounded-xl border border-purple-200 space-y-2">
-                <label className="block text-xs font-bold text-purple-900 uppercase tracking-wider">
-                  Référence Interne du Matériel Lié (Modèle) <span className="text-red-500">*</span>
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] text-purple-700 font-medium mb-1">
-                      Choisir parmi les références existantes :
-                    </label>
-                    <select
-                      value={form.refMateriel}
-                      onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    >
-                      <option value="">-- Sélectionner un modèle --</option>
-                      {modelesRefs.map((mod) => (
-                        <option key={mod.ref} value={mod.ref}>
-                          {mod.ref} — {mod.designation} ({mod.count} appareil{mod.count > 1 ? 's' : ''})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-purple-700 font-medium mb-1">
-                      Ou saisie manuelle (enregistrée en majuscules) :
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: HP-M404"
-                      value={form.refMateriel}
-                      onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-purple-800">
-                  <Printer className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                  <span>
-                    Deux imprimantes du même modèle partageant la référence <strong>{form.refMateriel || '...'}</strong> pourront utiliser ce liquide d'écriture.
+              {/* Imprimante Liée (Modèle) */}
+              <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+                    <Printer className="w-4 h-4 text-purple-700" />
+                    <span>Imprimante Associée (Référence Modèle)</span>
+                    <span className="text-red-500">*</span>
+                  </label>
+                  <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
+                    {imprimantesDisponibles.length} imprimante{imprimantesDisponibles.length > 1 ? 's' : ''} éligible{imprimantesDisponibles.length > 1 ? 's' : ''}
                   </span>
                 </div>
+
+                <div>
+                  <label className="block text-[11px] text-purple-700 font-medium mb-1">
+                    Choisir parmi les références existantes :
+                  </label>
+                  <select
+                    value={form.refMateriel}
+                    onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                  >
+                    <option value="">-- Sélectionner une imprimante (vide / à 0%) --</option>
+                    {imprimantesDisponibles.map((mod) => (
+                      <option key={mod.ref} value={mod.ref}>
+                        {mod.ref} — {mod.designation} [{mod.statutLiquide}] ({mod.count} machine{mod.count > 1 ? 's' : ''})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {imprimantesDisponibles.length === 0 ? (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                    ⚠️ Aucune imprimante avec liquide à 0% (vide) ou sans liquide n'est actuellement disponible dans le parc.
+                    Pour en déclarer une, modifiez un matériel dans l'inventaire en cochant <strong>« Est-ce que c'est une imprimante ? »</strong>.
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-2 pt-0.5 text-[11px] text-purple-800">
+                    <Info className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <span>
+                      La liste affiche uniquement les imprimantes (cochées comme imprimante ou du groupe catégorie Imprimante) dont le liquide est à 0% (vide).
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Taux d'Utilisation : "0%", "25%", "50%", "75%", "100%" */}

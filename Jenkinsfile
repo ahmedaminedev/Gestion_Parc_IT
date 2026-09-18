@@ -461,6 +461,42 @@ pipeline {
 
                 bat '''
                     echo.
+                    echo ===== VERIFICATION ET DEMARRAGE SERVICE DOCKER =====
+                    sc query docker 2>nul | findstr /I "RUNNING" >nul
+                    if errorlevel 1 (
+                        echo [INFO] Service Docker Windows non actif. Tentative de demarrage automatique...
+                        net start docker 2>nul || powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Service docker -ErrorAction SilentlyContinue"
+                        timeout /t 6 /nobreak >nul
+                    )
+
+                    echo.
+                    echo ===== TEST CONNEXION DOCKER DAEMON =====
+                    docker info >nul 2>&1
+                    if errorlevel 1 (
+                        echo.
+                        echo ================================================================================
+                        echo [ERREUR] Impossible de se connecter a l API Docker (pipe //./pipe/docker_engine).
+                        echo Le daemon Docker n est pas demarre sur cette machine Jenkins.
+                        echo.
+                        echo ACTIONS A EFFECTUER SUR LE SERVEUR JENKINS :
+                        echo 1. Si Docker Engine est installe comme Service Windows :
+                        echo    Ouvrez PowerShell/CMD en Administrateur et executez :
+                        echo    net start docker
+                        echo    (ou : Start-Service docker)
+                        echo.
+                        echo 2. Si vous utilisez Docker Desktop :
+                        echo    - Lancez Docker Desktop.
+                        echo    - Clic droit sur l icone Docker dans la barre des taches et choisissez :
+                        echo      'Switch to Windows containers...' (obligatoire pour Nano Server 2025).
+                        echo    - Si Jenkins tourne sous le compte 'Local System' (SYSTEM), Docker Desktop
+                        echo      ne partage pas son pipe nomme avec la session 0.
+                        echo      Solution : demarrez le service Docker natif ou faites tourner le service
+                        echo      Jenkins sous votre session utilisateur.
+                        echo ================================================================================
+                        exit /b 1
+                    )
+
+                    echo.
                     echo ===== DOCKER OS TYPE =====
                     docker info --format "{{.OSType}}"
 

@@ -18,6 +18,7 @@ export interface IMateriel extends Document {
   id_Emplacement?: string;
   id_Beneficiaire?: string;
   image?: string;
+  isImprimante?: boolean;
 }
 
 const MaterielSchema: Schema = new Schema(
@@ -42,6 +43,7 @@ const MaterielSchema: Schema = new Schema(
     id_Emplacement: { type: String, default: '' },
     id_Beneficiaire: { type: String, default: '' },
     image: { type: String, default: '' },
+    isImprimante: { type: Boolean, default: false },
   },
   {
     timestamps: true,

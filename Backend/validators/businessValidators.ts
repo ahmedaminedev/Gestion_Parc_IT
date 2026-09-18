@@ -107,6 +107,9 @@ export async function validateMaterielData(
     };
   }
   data.reference = reference.trim().toUpperCase();
+  if (data.isImprimante !== undefined) {
+    data.isImprimante = Boolean(data.isImprimante);
+  }
 
   // 2. Référence d'immobilisation ERP (Optionnelle mais Unique si renseignée)
   if (ref_immo && ref_immo.trim()) {

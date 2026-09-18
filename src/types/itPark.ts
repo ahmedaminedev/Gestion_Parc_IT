@@ -160,6 +160,7 @@ export interface Materiel {
   id_Emplacement: string;
   id_Beneficiaire?: string;
   image?: string;
+  isImprimante?: boolean;
 }
 
 // =========================================================================
