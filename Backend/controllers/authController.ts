@@ -289,6 +289,7 @@ export async function seedInitialDatabase() {
         password: adminPassHash,
         id_Role: getRoleIdByName('Responsable IT'),
         isSuperAdmin: true,
+        accesApp: 'GLOBAL_BACKOFFICE',
         id_Emplacement: emplacementsList[0]?.id || defaultEmpId,
       },
       {
@@ -297,6 +298,7 @@ export async function seedInitialDatabase() {
         password: respITPassHash,
         id_Role: getRoleIdByName('Responsable IT'),
         isSuperAdmin: false,
+        accesApp: 'GLOBAL_BACKOFFICE',
         id_Emplacement: emplacementsList[1]?.id || defaultEmpId,
       },
       {
@@ -305,6 +307,7 @@ export async function seedInitialDatabase() {
         password: respITPassHash,
         id_Role: getRoleIdByName('Responsable IT'),
         isSuperAdmin: false,
+        accesApp: 'GLOBAL_BACKOFFICE',
         id_Emplacement: emplacementsList[1]?.id || defaultEmpId,
       },
       {
@@ -313,6 +316,7 @@ export async function seedInitialDatabase() {
         password: respITPassHash,
         id_Role: getRoleIdByName('Responsable IT'),
         isSuperAdmin: false,
+        accesApp: 'GLOBAL_BACKOFFICE',
         id_Emplacement: emplacementsList[2]?.id || defaultEmpId,
       },
 
@@ -396,6 +400,9 @@ export async function seedInitialDatabase() {
         }
         if (uData.isSuperAdmin !== undefined) {
           existing.isSuperAdmin = uData.isSuperAdmin;
+        }
+        if (uData.accesApp) {
+          existing.accesApp = uData.accesApp as any;
         }
         await existing.save();
       }
@@ -889,7 +896,8 @@ export async function login(req: Request, res: Response) {
       }
     }
 
-    const resolvedAccesApp = user.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : 'ESPACE_RECLAMATIONS');
+    const isITRole = normalizeRoleName(roleName) === normalizeRoleName('Responsable IT') || !!user.isSuperAdmin;
+    const resolvedAccesApp = (user.accesApp === 'GLOBAL_BACKOFFICE' || isITRole) ? 'GLOBAL_BACKOFFICE' : (user.accesApp || 'ESPACE_RECLAMATIONS');
 
     // Generate tokens (Access: 15m, Refresh: 7d)
     const userId = user.id || user._id?.toString() || 'user_default';
@@ -1120,7 +1128,8 @@ export async function refreshToken(req: Request, res: Response) {
 
     // Resolve user's role from Role collection or user record
     const { id_Role, roleName } = await resolveUserRole(user.id_Role, (user as any).role);
-    const resolvedAccesApp = user.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : 'ESPACE_RECLAMATIONS');
+    const isITRole = normalizeRoleName(roleName) === normalizeRoleName('Responsable IT') || !!user.isSuperAdmin;
+    const resolvedAccesApp = (user.accesApp === 'GLOBAL_BACKOFFICE' || isITRole) ? 'GLOBAL_BACKOFFICE' : (user.accesApp || 'ESPACE_RECLAMATIONS');
 
     // 8. Generate new Tokens
     const tokens = generateTokens({
@@ -1345,7 +1354,8 @@ export async function getMe(req: any, res: Response) {
     }
 
     const { id_Role, roleName } = await resolveUserRole(user.id_Role || req.user?.id_Role, (user as any).role || req.user?.role);
-    const resolvedAccesApp = user.accesApp || req.user?.accesApp || (roleName === 'Responsable IT' ? 'GLOBAL_BACKOFFICE' : 'ESPACE_RECLAMATIONS');
+    const isITRole = normalizeRoleName(roleName) === normalizeRoleName('Responsable IT') || !!(user.isSuperAdmin ?? req.user?.isSuperAdmin);
+    const resolvedAccesApp = (user.accesApp === 'GLOBAL_BACKOFFICE' || req.user?.accesApp === 'GLOBAL_BACKOFFICE' || isITRole) ? 'GLOBAL_BACKOFFICE' : (user.accesApp || req.user?.accesApp || 'ESPACE_RECLAMATIONS');
     return res.json({
       id: user.id || user._id?.toString() || req.user?.id,
       beneficiaire: user.beneficiaire || req.user?.beneficiaire || 'Utilisateur',
