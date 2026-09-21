@@ -1080,6 +1080,7 @@ class ITParkService {
       id: comp.id || `COMP-${Date.now()}`,
       REF_composant: cleanRef,
       nom: (comp.nom || cleanRef).trim(),
+      couleur: comp.couleur || 'Noir',
       refMateriel: cleanRefMateriel,
       id_Materiel: cleanRefMateriel,
       capaciteType: comp.capaciteType || 'litrage',

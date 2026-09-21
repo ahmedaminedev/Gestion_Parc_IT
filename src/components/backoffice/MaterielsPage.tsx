@@ -27,7 +27,9 @@ import {
   GroupeMateriel,
   Materiel,
   Composant,
-  StatutMateriel
+  StatutMateriel,
+  CouleurImprimante,
+  COULEURS_IMPRIMANTE
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal, ConfirmModalItem } from '../common/CustomConfirmModal';
@@ -38,6 +40,7 @@ export interface MatFormComposantItem {
   id?: string;
   REF_composant: string;
   nom: string;
+  couleur?: CouleurImprimante | string;
   capaciteType?: 'grammage' | 'litrage';
   capaciteValeur?: number | '';
   capaciteUnite?: 'g' | 'kg' | 'l' | 'cl';
@@ -126,18 +129,34 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
   const [formComposants, setFormComposants] = useState<MatFormComposantItem[]>([]);
 
   const handleAddFormComposant = () => {
+    if (formComposants.length >= 4) {
+      return;
+    }
+
     const isPrinter = matForm.isImprimante ||
                       matForm.designation.toLowerCase().includes('imprim') ||
                       matForm.designation.toLowerCase().includes('print') ||
                       matForm.designation.toLowerCase().includes('copieur');
 
-    const defaultName = isPrinter ? "Liquide d'écriture (Encre)" : "Liquide d'écriture";
+    // Déterminer la prochaine couleur d'imprimante disponible (Noir, Cyan, Magenta, Jaune)
+    const usedColors = formComposants.map(c => c.couleur);
+    const PRIMARY_PREF: Array<{ id: CouleurImprimante; label: string; prefix: string }> = [
+      { id: 'Noir', label: 'Noir', prefix: 'BK' },
+      { id: 'Cyan', label: 'Cyan', prefix: 'CY' },
+      { id: 'Magenta', label: 'Magenta', prefix: 'MG' },
+      { id: 'Jaune', label: 'Jaune', prefix: 'YL' },
+    ];
+    const picked = PRIMARY_PREF.find(col => !usedColors.includes(col.id)) || PRIMARY_PREF[0];
+
+    const defaultName = isPrinter ? `Liquide d'écriture ${picked.label}` : "Liquide d'écriture";
+    const refCode = `LIQ-${picked.prefix}-${Math.floor(100 + Math.random() * 900)}`;
 
     setFormComposants(prev => [
       ...prev,
       {
-        REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
+        REF_composant: refCode,
         nom: defaultName,
+        couleur: picked.id,
         utilisation: '0%',
       }
     ]);
@@ -349,6 +368,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
       id: c.id,
       REF_composant: c.REF_composant,
       nom: c.nom,
+      couleur: (c.couleur as any) || 'Noir',
       utilisation: c.utilisation,
     })));
 
@@ -477,6 +497,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
             id: compId,
             REF_composant: c.REF_composant.trim().toUpperCase(),
             nom: c.nom.trim(),
+            couleur: c.couleur || 'Noir',
             utilisation: c.utilisation,
             refMateriel: saved.reference,
             id_Materiel: saved.reference,
@@ -1646,7 +1667,10 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
               </div>
 
               {/* SECTION: Liquides d'écriture (Affichée UNIQUEMENT si Est-ce que c'est une imprimante est cochée) */}
-              {matForm.isImprimante && (
+              {matForm.isImprimante && (() => {
+                const isMaxLiquides = formComposants.length >= 4;
+
+                return (
                 <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/90 space-y-3.5 animate-in fade-in duration-200">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
                     <div className="flex items-start gap-2.5">
@@ -1659,27 +1683,38 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                             Liquides d'écriture de l'imprimante
                           </h4>
                           {formComposants.length > 0 && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                              {formComposants.length} liquide{formComposants.length > 1 ? 's' : ''} d'écriture
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                              isMaxLiquides
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-purple-100 text-purple-800 border-purple-200'
+                            }`}>
+                              {formComposants.length}/4 liquide{formComposants.length > 1 ? 's' : ''} {isMaxLiquides ? '(Plein)' : ''}
                             </span>
                           )}
                         </div>
                         <p className="text-[11px] text-gray-500 mt-0.5">
-                          Les liquides sont reliés au modèle de cette imprimante (référence <strong>{matForm.reference || 'REF'}</strong>).
+                          Les liquides sont reliés au modèle de cette imprimante (référence <strong>{matForm.reference || 'REF'}</strong>). Limite maximale : 4 liquides (CMJN).
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={handleAddFormComposant}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-colors cursor-pointer"
-                        title="Ajouter un liquide d'écriture pour cette imprimante"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-purple-600" />
-                        <span>+ Ajouter liquide</span>
-                      </button>
+                      {!isMaxLiquides ? (
+                        <button
+                          type="button"
+                          onClick={handleAddFormComposant}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-colors cursor-pointer"
+                          title="Ajouter un liquide d'écriture pour cette imprimante (max 4)"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-purple-600" />
+                          <span>+ Ajouter liquide ({4 - formComposants.length} dispo)</span>
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl bg-amber-100 text-amber-900 border border-amber-300">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                          Imprimante pleine (4/4)
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1692,7 +1727,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                       <div>
                         <p className="text-xs font-bold text-gray-700">Aucun liquide d'écriture associé</p>
                         <p className="text-[11px] text-gray-400 mt-0.5 max-w-md mx-auto">
-                          Cette imprimante n'a pas encore de liquide d'écriture. Cliquez sur le bouton ci-dessous pour lui en affecter un.
+                          Cette imprimante n'a pas encore de liquide d'écriture. Cliquez sur le bouton ci-dessous pour lui en affecter un (jusqu'à 4 liquides).
                         </p>
                       </div>
                       <div className="pt-1 flex flex-wrap justify-center gap-2">
@@ -1726,6 +1761,15 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                                 <span className="text-[10px] font-mono text-gray-400">
                                   [{comp.REF_composant}]
                                 </span>
+                                {comp.couleur && (
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md text-white ${
+                                    comp.couleur === 'Cyan' ? 'bg-cyan-500' :
+                                    comp.couleur === 'Magenta' ? 'bg-pink-600' :
+                                    comp.couleur === 'Jaune' ? 'bg-amber-400 text-gray-950!' : 'bg-gray-900'
+                                  }`}>
+                                    Couleur : {comp.couleur}
+                                  </span>
+                                )}
                                 {isStock ? (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                                     <CheckCircle2 className="w-3 h-3" />
@@ -1747,6 +1791,42 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                            </div>
+
+                            {/* Choix de la couleur principale d'imprimante */}
+                            <div>
+                              <label className="block text-[11px] font-bold text-gray-700 mb-1.5">
+                                Couleur du liquide (Couleurs principales d'imprimante) <span className="text-red-500">*</span>
+                              </label>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {COULEURS_IMPRIMANTE.map((col) => {
+                                  const isSelected = comp.couleur === col.id;
+                                  return (
+                                    <button
+                                      key={col.id}
+                                      type="button"
+                                      onClick={() => {
+                                        const defaultNom = `Liquide d'écriture ${col.id}`;
+                                        handleUpdateFormComposant(idx, {
+                                          couleur: col.id,
+                                          nom: comp.nom.startsWith("Liquide d'écriture") ? defaultNom : comp.nom
+                                        });
+                                      }}
+                                      className={`flex items-center gap-2 p-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                                        isSelected
+                                          ? 'border-gray-900 bg-gray-50 ring-1 ring-gray-900 shadow-2xs'
+                                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <span
+                                        className="w-3.5 h-3.5 rounded-full shrink-0 border border-black/10"
+                                        style={{ backgroundColor: col.codeHex }}
+                                      />
+                                      <span className="truncate">{col.nom}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1823,20 +1903,59 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
                         );
                       })}
 
-                      <div className="pt-1 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleAddFormComposant}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 rounded-xl transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <Plus className="w-3.5 h-3.5 text-purple-600" />
-                          <span>+ Ajouter un autre liquide d'écriture</span>
-                        </button>
-                      </div>
+                      {/* Condition Imprimante Pleine (4 liquides) */}
+                      {isMaxLiquides ? (
+                        <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl space-y-2 text-amber-950 shadow-2xs">
+                          <div className="flex items-center gap-2 font-bold text-xs text-amber-900">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Imprimante pleine (maximum de 4 liquides atteint)</span>
+                          </div>
+                          <p className="text-[11px] text-amber-800 font-medium">
+                            Veuillez compléter le liquide de :
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                            {formComposants.map((c, i) => {
+                              const pNum = parseInt(c.utilisation.replace('%', ''), 10) || 0;
+                              const rPercent = 100 - pNum;
+                              return (
+                                <div key={i} className="flex items-center justify-between p-2 bg-white rounded-lg border border-amber-200 text-xs">
+                                  <span className="font-semibold text-gray-800 flex items-center gap-1.5 truncate">
+                                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                      c.couleur === 'Cyan' ? 'bg-cyan-500' :
+                                      c.couleur === 'Magenta' ? 'bg-pink-600' :
+                                      c.couleur === 'Jaune' ? 'bg-amber-400' : 'bg-gray-900'
+                                    }`} />
+                                    <span className="truncate">{c.couleur ? `${c.couleur} : ` : ''}{c.nom || `Liquide #${i + 1}`}</span>
+                                  </span>
+                                  <span className="font-bold text-amber-900 shrink-0 ml-2">
+                                    {rPercent > 0 ? (
+                                      <span>il reste <strong>{rPercent}%</strong> à utiliser</span>
+                                    ) : (
+                                      <span className="text-red-600 font-bold">Épuisé (0% restant)</span>
+                                    )}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleAddFormComposant}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 rounded-xl transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-purple-600" />
+                            <span>+ Ajouter un autre liquide d'écriture ({4 - formComposants.length} slot{4 - formComposants.length > 1 ? 's' : ''} restant{4 - formComposants.length > 1 ? 's' : ''})</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
               <div className="pt-4 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 border-t border-gray-100 shrink-0">
                 <button

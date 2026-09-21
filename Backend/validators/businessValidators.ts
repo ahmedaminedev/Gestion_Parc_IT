@@ -1052,6 +1052,37 @@ export async function validateComposantData(
   data.refMateriel = resolvedRef;
   data.id_Materiel = resolvedRef;
 
+  // Règle Métier : Maximum 4 liquides par imprimante
+  const existingCount = await Composant.countDocuments({
+    $or: [
+      { refMateriel: resolvedRef },
+      { id_Materiel: resolvedRef },
+    ],
+    ...(existingId ? { _id: { $ne: existingId } } : {})
+  });
+
+  if (!existingId && existingCount >= 4) {
+    return {
+      isValid: false,
+      message: `Cette imprimante (${resolvedRef}) a déjà atteint le nombre maximum autorisé de 4 liquides d'écriture.`,
+      field: 'refMateriel',
+    };
+  }
+
+  // Validation de la couleur principale d'imprimante
+  if (data.couleur) {
+    const COULEURS_AUTORISEES = ['Noir', 'Cyan', 'Magenta', 'Jaune'];
+    if (!COULEURS_AUTORISEES.includes(data.couleur)) {
+      return {
+        isValid: false,
+        message: 'La couleur doit être l\'une des couleurs principales d\'imprimante : Noir, Cyan, Magenta ou Jaune.',
+        field: 'couleur',
+      };
+    }
+  } else {
+    data.couleur = 'Noir';
+  }
+
   // 4. Capacité : type enumerate ('grammage' | 'litrage') - Optionnel
   if (capaciteType && !['grammage', 'litrage'].includes(capaciteType)) {
     return {

@@ -8,7 +8,8 @@ import {
   TrendingUp,
   CheckCircle2,
   AlertTriangle,
-  Info
+  Info,
+  HelpCircle
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import { StockGlobalSummary, StockGroupeItem } from '../../types/itPark';
@@ -228,7 +229,14 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
                 <th className="py-3 px-4">Groupe de Matériel</th>
                 <th className="py-3 px-4">Stock Matériels</th>
                 <th className="py-3 px-4">Liquides d'écriture</th>
-                <th className="py-3 px-4 text-center">Disponibilité</th>
+                <th className="py-3 px-4 text-center">
+                  <div className="inline-flex items-center gap-1">
+                    <span>Disponibilité</span>
+                    <span className="cursor-help text-gray-400 hover:text-gray-600" title="Disponibilité en magasin (matériels libres / non affectés) et réserve de liquides neufs (0%)">
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </th>
                 <th className="py-3 px-4 text-right">Action</th>
               </tr>
             </thead>
@@ -242,11 +250,12 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
               ) : (
                 groupesStock.map((item: StockGroupeItem) => {
                   const hasLiquides = item.composantsAssociesCount > 0;
-                  const totalGroupeArticles = item.totalMateriels + item.composantsAssociesCount;
-                  const totalEnStockGroupe = item.enStock + item.composantsEnStock;
-                  const pctDispo = totalGroupeArticles > 0
-                    ? Math.round((totalEnStockGroupe / totalGroupeArticles) * 100)
-                    : 100;
+                  const pctDispoMat = item.totalMateriels > 0
+                    ? Math.round((item.enStock / item.totalMateriels) * 100)
+                    : 0;
+                  const pctDispoLiq = hasLiquides
+                    ? Math.round((item.composantsEnStock / item.composantsAssociesCount) * 100)
+                    : null;
 
                   return (
                     <tr key={item.idGroupe} className="hover:bg-gray-50/70 transition-colors">
@@ -296,18 +305,30 @@ export const StocksSection: React.FC<StocksSectionProps> = ({
                         )}
                       </td>
 
-                      {/* Taux Disponibilité Groupe */}
+                      {/* Taux Disponibilité Groupe (Détaillé Matériels + Liquides pour éviter toute ambiguïté) */}
                       <td className="py-3.5 px-4 text-center">
-                        <div className="inline-flex items-center gap-2">
-                          <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                            <div
-                              className="bg-emerald-500 h-full rounded-full transition-all"
-                              style={{ width: `${pctDispo}%` }}
-                            />
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="inline-flex items-center gap-2">
+                            <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${pctDispoMat > 0 ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                                style={{ width: `${pctDispoMat}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-bold text-gray-800 min-w-[32px] text-right">
+                              {pctDispoMat}%
+                            </span>
                           </div>
-                          <span className="text-xs font-bold text-gray-800 min-w-[32px] text-right">
-                            {pctDispo}%
+                          <span className="text-[10px] text-gray-400">
+                            {item.enStock}/{item.totalMateriels} matériel{item.totalMateriels > 1 ? 's' : ''} libre{item.enStock > 1 ? 's' : ''}
                           </span>
+
+                          {hasLiquides && pctDispoLiq !== null && (
+                            <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-800 bg-cyan-50/80 px-1.5 py-0.5 rounded border border-cyan-200" title="Réserve de liquides neufs (0%) disponibles">
+                              <Droplets className="w-2.5 h-2.5 text-cyan-600" />
+                              <span>Encre : {pctDispoLiq}% ({item.composantsEnStock}/{item.composantsAssociesCount} neuf{item.composantsEnStock > 1 ? 's' : ''})</span>
+                            </div>
+                          )}
                         </div>
                       </td>
 

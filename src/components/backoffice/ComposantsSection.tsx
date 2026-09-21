@@ -20,6 +20,8 @@ import {
   LiquideEcriture,
   Materiel,
   TauxUtilisationComposant,
+  CouleurImprimante,
+  COULEURS_IMPRIMANTE,
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal } from '../common/CustomConfirmModal';
@@ -69,8 +71,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   }, [materiels]);
 
   // Liste des imprimantes éligibles pour l'association d'un liquide d'écriture :
-  // - Cochée comme imprimante (isImprimante === true) OU catégorie de groupe "Imprimante" OU désignation imprimante
-  // - ET ayant un liquide de 0% (c'est-à-dire vide) OU sans aucun liquide associé (ou actuellement liée si modification)
+  // Imprimantes du parc avec décompte de leurs liquides existants (limite 4)
   const imprimantesDisponibles = useMemo(() => {
     const allGroups = itParkService.getGroupesMateriel();
     const map = new Map<string, {
@@ -79,6 +80,9 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
       count: number;
       machines: Materiel[];
       statutLiquide: string;
+      liquidesCount: number;
+      existingLiquides: Array<Composant | LiquideEcriture>;
+      isFull: boolean;
     }>();
 
     for (const m of materiels) {
@@ -100,24 +104,19 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
         continue;
       }
 
-      // 2. Critère Liquide à 0% (vide) ou sans liquide :
+      // 2. Liquides existants pour cette imprimante (modèle partagé par ref)
       const linkedComps = composants.filter(c => {
         const cRef = (c.refMateriel || c.id_Materiel || '').trim().toUpperCase();
         return cRef === r || c.id_Materiel === m.id;
       });
 
-      const isCurrentlyLinked = editingComp && (editingComp.refMateriel || '').toUpperCase() === r;
-      const hasNoLiquide = linkedComps.length === 0;
-      const hasZeroPercentLiquide = linkedComps.some(c => c.utilisation === '0%');
-
-      if (!hasNoLiquide && !hasZeroPercentLiquide && !isCurrentlyLinked) {
-        continue;
-      }
-
-      let statutLiquide = hasNoLiquide ? 'Sans liquide (Vide)' : 'Liquide à 0% (Vide)';
-      if (isCurrentlyLinked && !hasNoLiquide && !hasZeroPercentLiquide) {
-        statutLiquide = 'Actuellement assignée';
-      }
+      const count = linkedComps.length;
+      const isFull = count >= 4;
+      const statutLiquide = count === 0
+        ? 'Sans liquide (0/4)'
+        : isFull
+        ? 'Plein (4/4 liquides)'
+        : `${count}/4 liquide(s) (${4 - count} place${4 - count > 1 ? 's' : ''} libre${4 - count > 1 ? 's' : ''})`;
 
       const entry = map.get(r);
       if (entry) {
@@ -130,50 +129,165 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
           count: 1,
           machines: [m],
           statutLiquide,
+          liquidesCount: count,
+          existingLiquides: linkedComps,
+          isFull,
         });
       }
     }
 
     return Array.from(map.values()).sort((a, b) => a.ref.localeCompare(b.ref));
-  }, [materiels, composants, editingComp]);
+  }, [materiels, composants]);
 
   interface ComposantFormState {
     REF_composant: string;
     nom: string;
+    couleur: CouleurImprimante;
     refMateriel: string;
     utilisation: TauxUtilisationComposant;
     description: string;
   }
 
+  interface FormLiquideItem {
+    REF_composant: string;
+    nom: string;
+    couleur: CouleurImprimante;
+    utilisation: TauxUtilisationComposant;
+    description?: string;
+  }
+
+  const getNextAvailableColor = (used: (string | undefined)[]): { id: CouleurImprimante; prefix: string; label: string } => {
+    const list: Array<{ id: CouleurImprimante; prefix: string; label: string }> = [
+      { id: 'Noir', prefix: 'BK', label: 'Noir' },
+      { id: 'Cyan', prefix: 'CY', label: 'Cyan' },
+      { id: 'Magenta', prefix: 'MG', label: 'Magenta' },
+      { id: 'Jaune', prefix: 'YL', label: 'Jaune' },
+    ];
+    return list.find(c => !used.includes(c.id)) || list[0];
+  };
+
   // Form State : lier à la référence interne en majuscules (refMateriel)
   const [form, setForm] = useState<ComposantFormState>({
     REF_composant: '',
     nom: '',
+    couleur: 'Noir',
     refMateriel: '',
     utilisation: '0%',
     description: '',
   });
 
+  // Pour création multiple de liquides
+  const [multiLiquides, setMultiLiquides] = useState<FormLiquideItem[]>([]);
+
   // Modal Suppression
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [compToDelete, setCompToDelete] = useState<Composant | null>(null);
+
+  // Informations sur l'imprimante actuellement sélectionnée dans le modal
+  const selectedPrinterInfo = useMemo(() => {
+    const r = (form.refMateriel || '').trim().toUpperCase();
+    if (!r) return null;
+    return imprimantesDisponibles.find(p => p.ref === r) || null;
+  }, [form.refMateriel, imprimantesDisponibles]);
 
   // Ouvrir modal pour créer
   const handleOpenCreateModal = () => {
     setModalAlert(null);
     setEditingComp(null);
-    const defaultRef = imprimantesDisponibles.length > 0 ? imprimantesDisponibles[0].ref : '';
+    const nonFullPrinter = imprimantesDisponibles.find(p => !p.isFull);
+    const defaultPrinter = nonFullPrinter || imprimantesDisponibles[0];
+    const defaultRef = defaultPrinter ? defaultPrinter.ref : '';
+
+    const existing = composants.filter(c => (c.refMateriel || c.id_Materiel || '').toUpperCase() === defaultRef.toUpperCase());
+    const nextCol = getNextAvailableColor(existing.map(c => c.couleur));
+
     setForm({
-      REF_composant: 'LIQ-' + Math.floor(1000 + Math.random() * 9000),
-      nom: "Liquide d'écriture (Encre)",
+      REF_composant: `LIQ-${nextCol.prefix}-${Math.floor(100 + Math.random() * 900)}`,
+      nom: `Liquide d'écriture ${nextCol.label}`,
+      couleur: nextCol.id,
       refMateriel: defaultRef,
       utilisation: '0%',
       description: '',
     });
+
+    if (existing.length < 4) {
+      setMultiLiquides([
+        {
+          REF_composant: `LIQ-${nextCol.prefix}-${Math.floor(100 + Math.random() * 900)}`,
+          nom: `Liquide d'écriture ${nextCol.label}`,
+          couleur: nextCol.id,
+          utilisation: '0%',
+          description: '',
+        }
+      ]);
+    } else {
+      setMultiLiquides([]);
+    }
+
     setIsModalOpen(true);
   };
 
-  // Ouvrir modal pour éditer
+  // Changement de matériel dans le modal de création
+  const handleSelectPrinterChange = (newRef: string) => {
+    const cleanRef = newRef.toUpperCase();
+    setForm(prev => ({ ...prev, refMateriel: cleanRef }));
+
+    const existing = composants.filter(c => (c.refMateriel || c.id_Materiel || '').toUpperCase() === cleanRef);
+    if (existing.length >= 4) {
+      setMultiLiquides([]);
+      return;
+    }
+
+    const availableSlots = 4 - existing.length;
+    const nextCol = getNextAvailableColor(existing.map(c => c.couleur));
+
+    setMultiLiquides(prev => {
+      if (prev.length === 0) {
+        return [{
+          REF_composant: `LIQ-${nextCol.prefix}-${Math.floor(100 + Math.random() * 900)}`,
+          nom: `Liquide d'écriture ${nextCol.label}`,
+          couleur: nextCol.id,
+          utilisation: '0%',
+          description: '',
+        }];
+      }
+      return prev.slice(0, availableSlots);
+    });
+  };
+
+  // Ajouter un liquide supplémentaire dans le formulaire
+  const handleAddMultiLiquide = () => {
+    const existing = composants.filter(c => (c.refMateriel || c.id_Materiel || '').toUpperCase() === form.refMateriel.toUpperCase());
+    if (existing.length + multiLiquides.length >= 4) {
+      return;
+    }
+
+    const used = [...existing.map(c => c.couleur), ...multiLiquides.map(c => c.couleur)];
+    const nextCol = getNextAvailableColor(used);
+
+    setMultiLiquides(prev => [
+      ...prev,
+      {
+        REF_composant: `LIQ-${nextCol.prefix}-${Math.floor(100 + Math.random() * 900)}`,
+        nom: `Liquide d'écriture ${nextCol.label}`,
+        couleur: nextCol.id,
+        utilisation: '0%',
+        description: '',
+      }
+    ]);
+  };
+
+  // Supprimer un liquide du formulaire multiple
+  const handleRemoveMultiLiquide = (index: number) => {
+    setMultiLiquides(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Mettre à jour un liquide du formulaire multiple
+  const handleUpdateMultiLiquide = (index: number, updates: Partial<FormLiquideItem>) => {
+    setMultiLiquides(prev => prev.map((item, i) => i === index ? { ...item, ...updates } : item));
+  };
+
+  // Ouvrir modal pour éditer un liquide existant
   const handleOpenEditModal = (comp: Composant) => {
     setModalAlert(null);
     setEditingComp(comp);
@@ -181,72 +295,155 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     setForm({
       REF_composant: comp.REF_composant,
       nom: comp.nom,
+      couleur: (comp.couleur as any) || 'Noir',
       refMateriel: currentRef,
       utilisation: comp.utilisation,
       description: comp.description || '',
     });
+    setMultiLiquides([]);
     setIsModalOpen(true);
   };
 
-  // Sauvegarde (Création / Modification)
+  // Sauvegarde (Création multiple ou Modification unique)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalAlert(null);
-
-    // Contrôles de base côté client
-    if (!form.REF_composant.trim()) {
-      setModalAlert({
-        type: 'error',
-        message: "La référence du liquide d'écriture (REF) est obligatoire.",
-      });
-      return;
-    }
-
-    if (!form.nom.trim()) {
-      setModalAlert({
-        type: 'error',
-        message: "Le nom / la désignation du liquide d'écriture est obligatoire.",
-      });
-      return;
-    }
 
     const cleanRefUpper = form.refMateriel.trim().toUpperCase();
     if (!cleanRefUpper) {
       setModalAlert({
         type: 'error',
-        message: 'Veuillez renseigner la référence interne du matériel compatible (ex: HP-M404).',
+        message: 'Veuillez sélectionner une imprimante compatible.',
       });
       return;
     }
 
     setIsSaving(true);
     try {
-      const payload: Partial<Composant> = {
-        ...(editingComp?.id ? { id: editingComp.id } : {}),
-        REF_composant: form.REF_composant.trim().toUpperCase(),
-        nom: form.nom.trim(),
-        refMateriel: cleanRefUpper,
-        id_Materiel: cleanRefUpper,
-        utilisation: form.utilisation,
-        description: form.description.trim(),
-      };
+      if (editingComp) {
+        // Modification d'un seul liquide
+        if (!form.REF_composant.trim()) {
+          setModalAlert({
+            type: 'error',
+            message: "La référence du liquide d'écriture est obligatoire.",
+          });
+          setIsSaving(false);
+          return;
+        }
 
-      const result = await itParkService.saveComposant(payload);
-      if (!result.success) {
-        setModalAlert({
-          type: 'error',
-          message: result.message || "Erreur lors de l'enregistrement du liquide d'écriture.",
+        if (!form.nom.trim()) {
+          setModalAlert({
+            type: 'error',
+            message: "Le nom / la désignation du liquide d'écriture est obligatoire.",
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        const payload: Partial<Composant> = {
+          id: editingComp.id,
+          REF_composant: form.REF_composant.trim().toUpperCase(),
+          nom: form.nom.trim(),
+          couleur: form.couleur || 'Noir',
+          refMateriel: cleanRefUpper,
+          id_Materiel: cleanRefUpper,
+          utilisation: form.utilisation,
+          description: form.description.trim(),
+        };
+
+        const result = await itParkService.saveComposant(payload);
+        if (!result.success) {
+          setModalAlert({
+            type: 'error',
+            message: result.message || "Erreur lors de l'enregistrement du liquide d'écriture.",
+          });
+          return;
+        }
+
+        setIsModalOpen(false);
+        setSectionAlert({
+          type: 'success',
+          message: `Liquide d'écriture "${form.nom}" (Réf: ${form.REF_composant}) mis à jour avec succès.`,
         });
-        return;
+      } else {
+        // Création de 1 ou plusieurs liquides pour l'imprimante
+        const existing = composants.filter(c => (c.refMateriel || c.id_Materiel || '').toUpperCase() === cleanRefUpper);
+        if (existing.length >= 4) {
+          setModalAlert({
+            type: 'error',
+            message: "Cette imprimante a déjà atteint le maximum de 4 liquides. Impossible d'ajouter de nouveaux liquides.",
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        if (multiLiquides.length === 0) {
+          setModalAlert({
+            type: 'error',
+            message: "Veuillez ajouter au moins un liquide d'écriture.",
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        if (existing.length + multiLiquides.length > 4) {
+          setModalAlert({
+            type: 'error',
+            message: `Capacité dépassée : cette imprimante a déjà ${existing.length} liquide(s). Vous ne pouvez en ajouter que ${4 - existing.length} au maximum.`,
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        // Vérification de chaque liquide
+        for (let i = 0; i < multiLiquides.length; i++) {
+          const item = multiLiquides[i];
+          if (!item.REF_composant.trim()) {
+            setModalAlert({
+              type: 'error',
+              message: `La référence du liquide #${i + 1} est obligatoire.`,
+            });
+            setIsSaving(false);
+            return;
+          }
+          if (!item.nom.trim()) {
+            setModalAlert({
+              type: 'error',
+              message: `Le nom du liquide #${i + 1} est obligatoire.`,
+            });
+            setIsSaving(false);
+            return;
+          }
+        }
+
+        // Sauvegarder chaque liquide
+        for (const item of multiLiquides) {
+          const res = await itParkService.saveComposant({
+            REF_composant: item.REF_composant.trim().toUpperCase(),
+            nom: item.nom.trim(),
+            couleur: item.couleur || 'Noir',
+            refMateriel: cleanRefUpper,
+            id_Materiel: cleanRefUpper,
+            utilisation: item.utilisation,
+            description: item.description?.trim() || '',
+          });
+
+          if (!res.success) {
+            setModalAlert({
+              type: 'error',
+              message: res.message || `Erreur lors de l'enregistrement du liquide ${item.REF_composant}.`,
+            });
+            return;
+          }
+        }
+
+        setIsModalOpen(false);
+        setSectionAlert({
+          type: 'success',
+          message: `${multiLiquides.length} liquide(s) d'écriture associé(s) à l'imprimante ${cleanRefUpper} avec succès.`,
+        });
       }
 
-      setIsModalOpen(false);
-      setSectionAlert({
-        type: 'success',
-        message: editingComp
-          ? `Liquide d'écriture "${form.nom}" (Réf: ${form.REF_composant}) mis à jour avec succès.`
-          : `Liquide d'écriture "${form.nom}" (Réf: ${form.REF_composant}) enregistré avec succès.`,
-      });
       onRefresh();
     } catch (err: any) {
       setModalAlert({
@@ -496,6 +693,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
               <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 <th className="py-3 px-4">RÉF Liquide</th>
                 <th className="py-3 px-4">Désignation</th>
+                <th className="py-3 px-4">Couleur</th>
                 <th className="py-3 px-4">Réf. Interne Matériel Lié</th>
                 <th className="py-3 px-4">Imprimantes / Équipements Associés</th>
                 <th className="py-3 px-4">Capacité</th>
@@ -507,7 +705,7 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
             <tbody className="divide-y divide-gray-100 text-sm">
               {filteredComposants.length === 0 ? (
                 <tr>
-                  <td colSpan={isDSIAdmin ? 8 : 7} className="py-12 text-center text-gray-500">
+                  <td colSpan={isDSIAdmin ? 9 : 8} className="py-12 text-center text-gray-500">
                     <Droplets className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="font-medium text-gray-700">Aucun liquide d'écriture trouvé</p>
                     <p className="text-xs text-gray-400 mt-1">
@@ -547,6 +745,27 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                             <span className="text-xs text-gray-400 truncate max-w-xs">{comp.description}</span>
                           )}
                         </div>
+                      </td>
+
+                      {/* Couleur Principale d'Imprimante */}
+                      <td className="py-3 px-4">
+                        {comp.couleur ? (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ${
+                            comp.couleur === 'Cyan' ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' :
+                            comp.couleur === 'Magenta' ? 'bg-pink-50 text-pink-700 border border-pink-200' :
+                            comp.couleur === 'Jaune' ? 'bg-amber-50 text-amber-900 border border-amber-300' :
+                            'bg-gray-100 text-gray-900 border border-gray-300'
+                          }`}>
+                            <span className={`w-2 h-2 rounded-full ${
+                              comp.couleur === 'Cyan' ? 'bg-cyan-500' :
+                              comp.couleur === 'Magenta' ? 'bg-pink-600' :
+                              comp.couleur === 'Jaune' ? 'bg-amber-400' : 'bg-gray-900'
+                            }`} />
+                            <span>{comp.couleur}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">—</span>
+                        )}
                       </td>
 
                       {/* Référence Interne Matériel Lié */}
@@ -694,10 +913,10 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">
-                    {editingComp ? "Modifier le Liquide d'écriture" : "Nouveau Liquide d'écriture"}
+                    {editingComp ? "Modifier le Liquide d'écriture" : "Nouveau(x) Liquide(s) d'écriture"}
                   </h3>
                   <p className="text-xs text-gray-500">
-                    Lié à la référence interne du modèle matériel (partagé entre plusieurs machines).
+                    Lié à l'imprimante sélectionnée (maximum 4 liquides par imprimante : Noir, Cyan, Magenta, Jaune).
                   </p>
                 </div>
               </div>
@@ -719,43 +938,9 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleSave} className="mt-4 space-y-4">
-              {/* REF_composant & Nom */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                    RÉF Liquide (Unique) <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: LIQ-HP-01, ENCRE-404..."
-                    value={form.REF_composant}
-                    onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
-                  />
-                  <span className="text-[11px] text-gray-400 mt-1 block">
-                    Référence consommable interne (majuscules)
-                  </span>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                    Nom / Désignation <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: Encre Noire Haute Capacité, Flacon Cyan..."
-                    value={form.nom}
-                    onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                    className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              {/* Imprimante Liée (Modèle) */}
-              <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 space-y-2.5">
+            <form onSubmit={handleSave} className="mt-4 space-y-5">
+              {/* Choix de l'Imprimante Liée */}
+              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-200 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="block text-xs font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
                     <Printer className="w-4 h-4 text-purple-700" />
@@ -763,114 +948,359 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                     <span className="text-red-500">*</span>
                   </label>
                   <span className="text-[11px] font-semibold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-md">
-                    {imprimantesDisponibles.length} imprimante{imprimantesDisponibles.length > 1 ? 's' : ''} éligible{imprimantesDisponibles.length > 1 ? 's' : ''}
+                    {imprimantesDisponibles.length} imprimante{imprimantesDisponibles.length > 1 ? 's' : ''} répertoriée{imprimantesDisponibles.length > 1 ? 's' : ''}
                   </span>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] text-purple-700 font-medium mb-1">
-                    Choisir parmi les références existantes :
-                  </label>
                   <select
+                    disabled={!!editingComp}
                     value={form.refMateriel}
-                    onChange={(e) => setForm({ ...form, refMateriel: e.target.value.toUpperCase() })}
-                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer"
+                    onChange={(e) => handleSelectPrinterChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-purple-300 rounded-lg text-sm text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:bg-gray-100 disabled:text-gray-600 cursor-pointer"
                   >
-                    <option value="">-- Sélectionner une imprimante (vide / à 0%) --</option>
+                    <option value="">-- Sélectionner une imprimante --</option>
                     {imprimantesDisponibles.map((mod) => (
                       <option key={mod.ref} value={mod.ref}>
-                        {mod.ref} — {mod.designation} [{mod.statutLiquide}] ({mod.count} machine{mod.count > 1 ? 's' : ''})
+                        {mod.ref} — {mod.designation} [{mod.statutLiquide}]
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {imprimantesDisponibles.length === 0 ? (
-                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                    ⚠️ Aucune imprimante avec liquide à 0% (vide) ou sans liquide n'est actuellement disponible dans le parc.
-                    Pour en déclarer une, modifiez un matériel dans l'inventaire en cochant <strong>« Est-ce que c'est une imprimante ? »</strong>.
-                  </p>
-                ) : (
-                  <div className="flex items-center gap-2 pt-0.5 text-[11px] text-purple-800">
-                    <Info className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                    <span>
-                      La liste affiche uniquement les imprimantes (cochées comme imprimante ou du groupe catégorie Imprimante) dont le liquide est à 0% (vide).
+                {/* Message d'information sur la limite des 4 liquides */}
+                {selectedPrinterInfo && (
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-purple-200/60">
+                    <span className="text-purple-800 font-medium">
+                      État actuel : <strong>{selectedPrinterInfo.liquidesCount}/4 liquides</strong> assignés
+                    </span>
+                    <span className={`font-bold px-2 py-0.5 rounded ${
+                      selectedPrinterInfo.isFull
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}>
+                      {selectedPrinterInfo.isFull ? 'Capacité maximale atteinte' : `${4 - selectedPrinterInfo.liquidesCount} place(s) disponible(s)`}
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Taux d'Utilisation : "0%", "25%", "50%", "75%", "100%" */}
-              <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                    Taux d'Utilisation <span className="text-red-500">*</span>
-                  </label>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
-                    form.utilisation === '0%'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : form.utilisation === '100%'
-                      ? 'bg-rose-100 text-rose-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {form.utilisation === '0%' ? '✅ En Stock (0%)' : `Stock - 1 (${form.utilisation})`}
-                  </span>
-                </div>
+              {/* Cas 1 : Modification d'un liquide existant */}
+              {editingComp ? (
+                <div className="space-y-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200">
+                  {/* Choix Couleur Principale */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                      Couleur Principale de l'Imprimante <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {COULEURS_IMPRIMANTE.map((col) => (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => setForm({ ...form, couleur: col.id })}
+                          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                            form.couleur === col.id
+                              ? `${col.badgeBg} ${col.badgeText} border-gray-900 shadow-sm ring-2 ring-gray-900/10`
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full shrink-0 border border-black/20"
+                            style={{ backgroundColor: col.colorHex }}
+                          />
+                          <span>{col.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                <div className="grid grid-cols-5 gap-2 pt-1">
-                  {(['0%', '25%', '50%', '75%', '100%'] as TauxUtilisationComposant[]).map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setForm({ ...form, utilisation: val })}
-                      className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                        form.utilisation === val
-                          ? val === '0%'
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                            : val === '100%'
-                            ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
-                            : 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
+                  {/* REF & Nom */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                        RÉF Liquide (Unique) <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={form.REF_composant}
+                        onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                        Nom / Désignation <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={form.nom}
+                        onChange={(e) => setForm({ ...form, nom: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Taux d'Utilisation */}
+                  <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                        Taux d'Utilisation <span className="text-red-500">*</span>
+                      </label>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                        form.utilisation === '0%'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : form.utilisation === '100%'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}>
+                        {form.utilisation === '0%' ? '✅ En Stock (0%)' : `Sorti du stock (${form.utilisation})`}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-5 gap-2 pt-1">
+                      {(['0%', '25%', '50%', '75%', '100%'] as TauxUtilisationComposant[]).map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setForm({ ...form, utilisation: val })}
+                          className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                            form.utilisation === val
+                              ? val === '0%'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                : val === '100%'
+                                ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                : 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                          }`}
+                        >
+                          {val}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                      Description / Remarques (Optionnel)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+                </div>
+              ) : selectedPrinterInfo?.isFull ? (
+                /* Cas 2 : Imprimante PLEINE (4 liquides atteints) - Message de complétion au lieu du bouton d'ajout */
+                <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-3 text-amber-950 shadow-2xs">
+                  <div className="flex items-center gap-2 font-bold text-sm text-amber-900">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span>Imprimante pleine (maximum de 4 liquides atteint)</span>
+                  </div>
+                  <p className="text-xs text-amber-900 font-medium">
+                    Cette imprimante a atteint le nombre maximum de 4 liquides d'écriture. Veuillez compléter le(s) liquide(s) de cette imprimante :
+                  </p>
+                  <div className="space-y-2 pt-1">
+                    {selectedPrinterInfo.existingLiquides.map((liq, idx) => {
+                      const valNum = parseInt(liq.utilisation.replace('%', ''), 10) || 0;
+                      const restant = 100 - valNum;
+                      return (
+                        <div key={idx} className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-amber-200 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-3 h-3 rounded-full shrink-0 border border-black/10 ${
+                              liq.couleur === 'Cyan' ? 'bg-cyan-500' :
+                              liq.couleur === 'Magenta' ? 'bg-pink-600' :
+                              liq.couleur === 'Jaune' ? 'bg-amber-400' : 'bg-gray-900'
+                            }`} />
+                            <span className="font-semibold text-gray-900">{liq.nom}</span>
+                            {liq.couleur && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">
+                                {liq.couleur}
+                              </span>
+                            )}
+                            <span className="text-gray-400 font-mono text-[11px]">({liq.REF_composant})</span>
+                          </div>
+                          <span className="font-bold text-amber-900">
+                            {restant > 0 ? (
+                              <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                                il reste <strong>{restant}%</strong> à utiliser
+                              </span>
+                            ) : (
+                              <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded">
+                                Épuisé (0% restant)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[11px] text-amber-800 bg-amber-100/60 p-2 rounded-lg">
+                    💡 Pour ajouter un nouveau liquide, libérez un emplacement en complétant ou supprimant l'un des liquides actuels.
+                  </div>
+                </div>
+              ) : (
+                /* Cas 3 : Ajout multiple de liquides (avec couleur et ajout/suppression, jusqu'à 4) */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Liquides à ajouter ({multiLiquides.length} liquide{multiLiquides.length > 1 ? 's' : ''})
+                    </span>
+                    {selectedPrinterInfo && (
+                      <span className="text-xs text-purple-700 font-medium">
+                        Total après ajout : <strong>{(selectedPrinterInfo.liquidesCount || 0) + multiLiquides.length} / 4</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {multiLiquides.map((liq, index) => (
+                    <div
+                      key={index}
+                      className="p-4 bg-gray-50/80 rounded-xl border border-gray-200 space-y-3.5 relative"
                     >
-                      {val}
-                    </button>
-                  ))}
-                </div>
+                      <div className="flex items-center justify-between pb-2 border-b border-gray-200">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-red-100 text-red-700 text-xs font-bold flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          <span className="text-xs font-bold text-gray-800">
+                            Liquide d'écriture #{index + 1}
+                          </span>
+                        </div>
+                        {multiLiquides.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMultiLiquide(index)}
+                            className="text-rose-600 hover:text-rose-800 text-xs font-semibold flex items-center gap-1 p-1 hover:bg-rose-50 rounded cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Supprimer ce liquide</span>
+                          </button>
+                        )}
+                      </div>
 
-                {/* Explication Règle de stockage */}
-                <div className={`p-2.5 rounded-lg text-xs mt-2 border ${
-                  form.utilisation === '0%'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}>
-                  {form.utilisation === '0%' ? (
-                    <p className="flex items-center gap-1.5 font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span><strong>Règle de stockage :</strong> Ce liquide d'écriture est à 0% d'utilisation, il <strong>appartient au stock disponible</strong>.</span>
-                    </p>
+                      {/* Choix Couleur Principale */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1.5">
+                          Couleur Principale <span className="text-red-500">*</span>
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {COULEURS_IMPRIMANTE.map((col) => {
+                            const isSelected = liq.couleur === col.id;
+                            return (
+                              <button
+                                key={col.id}
+                                type="button"
+                                onClick={() => {
+                                  handleUpdateMultiLiquide(index, {
+                                    couleur: col.id,
+                                    nom: `Liquide d'écriture ${col.label}`,
+                                    REF_composant: `LIQ-${col.prefix}-${Math.floor(100 + Math.random() * 900)}`,
+                                  });
+                                }}
+                                className={`flex items-center justify-center gap-2 py-2 px-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                  isSelected
+                                    ? `${col.badgeBg} ${col.badgeText} border-gray-900 shadow-xs ring-2 ring-gray-900/10`
+                                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                                }`}
+                              >
+                                <span
+                                  className="w-3 h-3 rounded-full shrink-0 border border-black/20"
+                                  style={{ backgroundColor: col.colorHex }}
+                                />
+                                <span>{col.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* REF & Nom */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                            RÉF Liquide <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={liq.REF_composant}
+                            onChange={(e) => handleUpdateMultiLiquide(index, { REF_composant: e.target.value.toUpperCase() })}
+                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                            Nom / Désignation <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={liq.nom}
+                            onChange={(e) => handleUpdateMultiLiquide(index, { nom: e.target.value })}
+                            className="w-full px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Taux d'Utilisation */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[11px] font-semibold text-gray-700 uppercase tracking-wider">
+                            Taux d'Utilisation <span className="text-red-500">*</span>
+                          </label>
+                          <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                            liq.utilisation === '0%'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {liq.utilisation === '0%' ? '✅ En Stock (0%)' : `Sorti du stock (${liq.utilisation})`}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {(['0%', '25%', '50%', '75%', '100%'] as TauxUtilisationComposant[]).map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => handleUpdateMultiLiquide(index, { utilisation: val })}
+                              className={`py-1.5 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                liq.utilisation === val
+                                  ? val === '0%'
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                    : 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                              }`}
+                            >
+                              {val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Bouton d'ajout d'un liquide supplémentaire (si limite 4 non atteinte) */}
+                  {(selectedPrinterInfo?.liquidesCount || 0) + multiLiquides.length < 4 ? (
+                    <button
+                      type="button"
+                      onClick={handleAddMultiLiquide}
+                      className="w-full py-2.5 px-4 border-2 border-dashed border-red-300 text-red-700 font-semibold text-xs rounded-xl hover:bg-red-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Ajouter un autre liquide (reste {4 - (selectedPrinterInfo?.liquidesCount || 0) - multiLiquides.length} place(s))</span>
+                    </button>
                   ) : (
-                    <p className="flex items-center gap-1.5 font-medium">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span><strong>Règle de stockage :</strong> Niveau à {form.utilisation}, le liquide d'écriture est sorti du stock (<strong>Stock - 1</strong>).</span>
-                    </p>
+                    <div className="p-2.5 bg-gray-100 border border-gray-300 text-gray-600 text-xs text-center rounded-xl font-medium">
+                      Maximum de 4 liquides atteint pour cette imprimante (il ne reste plus de place disponible).
+                    </div>
                   )}
                 </div>
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                  Description / Remarques (Optionnel)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Notes techniques, compatibilité modèles, couleur d'encre..."
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500 focus:bg-white"
-                />
-              </div>
+              )}
 
               {/* Boutons d'Action */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
@@ -881,13 +1311,20 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 >
                   Annuler
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 bg-red-600 text-white font-medium text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer flex items-center gap-2 shadow-sm"
-                >
-                  {isSaving ? 'Enregistrement...' : editingComp ? 'Mettre à jour' : "Créer le Liquide d'écriture"}
-                </button>
+                {/* Ne pas afficher le bouton de création si imprimante pleine */}
+                {(!selectedPrinterInfo?.isFull || editingComp) && (
+                  <button
+                    type="submit"
+                    disabled={isSaving || (!editingComp && multiLiquides.length === 0)}
+                    className="px-5 py-2 bg-red-600 text-white font-medium text-sm rounded-lg hover:bg-red-700 disabled:opacity-50 cursor-pointer flex items-center gap-2 shadow-sm"
+                  >
+                    {isSaving
+                      ? 'Enregistrement...'
+                      : editingComp
+                      ? 'Mettre à jour'
+                      : `Enregistrer (${multiLiquides.length} liquide${multiLiquides.length > 1 ? 's' : ''})`}
+                  </button>
+                )}
               </div>
             </form>
           </div>

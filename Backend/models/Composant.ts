@@ -8,6 +8,7 @@ export interface ILiquideEcriture extends Document {
   id: string;
   REF_composant: string;
   nom: string;
+  couleur?: string;
   refMateriel: string;
   id_Materiel?: string;
   capaciteType?: CapaciteType;
@@ -34,6 +35,12 @@ const LiquideEcritureSchema: Schema = new Schema(
     nom: {
       type: String,
       required: true,
+      trim: true,
+    },
+    couleur: {
+      type: String,
+      enum: ['Noir', 'Cyan', 'Magenta', 'Jaune', null, ''],
+      default: 'Noir',
       trim: true,
     },
     refMateriel: {

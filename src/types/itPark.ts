@@ -174,10 +174,32 @@ export type CapaciteUnite = CapaciteUniteGrammage | CapaciteUniteLitrage;
 export type TauxUtilisationLiquide = '0%' | '25%' | '50%' | '75%' | '100%';
 export type TauxUtilisationComposant = TauxUtilisationLiquide;
 
+export type CouleurImprimante = 'Noir' | 'Cyan' | 'Magenta' | 'Jaune';
+
+export interface DetailCouleurImprimante {
+  id: CouleurImprimante;
+  nom: string;
+  label: string;
+  codeHex: string;
+  colorHex: string;
+  prefix: string;
+  badgeBg: string;
+  badgeText: string;
+  borderClass: string;
+}
+
+export const COULEURS_IMPRIMANTE: DetailCouleurImprimante[] = [
+  { id: 'Noir', nom: 'Noir (Black)', label: 'Noir', prefix: 'BK', codeHex: '#111827', colorHex: '#111827', badgeBg: 'bg-gray-900', badgeText: 'text-white', borderClass: 'border-gray-900' },
+  { id: 'Cyan', nom: 'Cyan (Bleu)', label: 'Cyan', prefix: 'CY', codeHex: '#06b6d4', colorHex: '#06b6d4', badgeBg: 'bg-cyan-500', badgeText: 'text-white', borderClass: 'border-cyan-500' },
+  { id: 'Magenta', nom: 'Magenta (Rouge/Rose)', label: 'Magenta', prefix: 'MG', codeHex: '#ec4899', colorHex: '#ec4899', badgeBg: 'bg-pink-600', badgeText: 'text-white', borderClass: 'border-pink-600' },
+  { id: 'Jaune', nom: 'Jaune (Yellow)', label: 'Jaune', prefix: 'YL', codeHex: '#eab308', colorHex: '#eab308', badgeBg: 'bg-amber-400', badgeText: 'text-gray-950', borderClass: 'border-amber-400' },
+];
+
 export interface LiquideEcriture {
   id: string;
   REF_composant: string; // Référence unique saisie par le responsable IT
   nom: string;
+  couleur?: CouleurImprimante | string; // Couleur principale de l'imprimante : Noir, Cyan, Magenta, Jaune
   refMateriel?: string; // Référence interne du modèle de matériel lié (en MAJUSCULES, ex: "HP-M404")
   id_Materiel?: string; // rétrocompatibilité
   materielDesignation?: string;
