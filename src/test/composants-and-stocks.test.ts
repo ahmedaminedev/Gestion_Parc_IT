@@ -12,8 +12,9 @@ describe('Composant & Stock Management Test Suite', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(ComposantModel, 'findOne').mockResolvedValue(null as any);
-    vi.spyOn(MaterielModel, 'findById').mockResolvedValue({ id: 'mat-test', _id: 'mat-test' } as any);
-    vi.spyOn(MaterielModel, 'findOne').mockResolvedValue({ id: 'mat-test', _id: 'mat-test' } as any);
+    vi.spyOn(ComposantModel, 'countDocuments').mockResolvedValue(0 as any);
+    vi.spyOn(MaterielModel, 'findById').mockResolvedValue({ id: 'mat-test', _id: 'mat-test', reference: 'HP-M404' } as any);
+    vi.spyOn(MaterielModel, 'findOne').mockResolvedValue({ id: 'mat-test', _id: 'mat-test', reference: 'HP-M404' } as any);
   });
 
   describe('1. Business Validators & Model Constraints', () => {
@@ -169,6 +170,58 @@ describe('Composant & Stock Management Test Suite', () => {
       expect(invalidUtil.isValid).toBe(false);
       expect(invalidUtil.field).toBe('utilisation');
       expect(invalidUtil.message).toContain('Le niveau d\'utilisation doit être l\'une des valeurs exactes');
+    });
+
+    it('enforces maximum 4 liquides per printer on creation', async () => {
+      vi.spyOn(ComposantModel, 'countDocuments').mockResolvedValue(4 as any);
+
+      const res = await validateComposantData({
+        REF_composant: 'LIQ-NEW',
+        nom: 'Encre supplémentaire',
+        id_Materiel: 'mat-test',
+        utilisation: '0%',
+        couleur: 'Noir'
+      });
+
+      expect(res.isValid).toBe(false);
+      expect(res.field).toBe('refMateriel');
+      expect(res.message).toContain('a déjà atteint le nombre maximum autorisé de 4 liquides d\'écriture');
+    });
+
+    it('allows modifying an existing liquid even if printer already has 4 liquids', async () => {
+      vi.spyOn(ComposantModel, 'countDocuments').mockResolvedValue(3 as any);
+
+      const res = await validateComposantData({
+        REF_composant: 'LIQ-EXISTING',
+        nom: 'Encre Modifiée',
+        id_Materiel: 'mat-test',
+        utilisation: '25%',
+        couleur: 'Cyan'
+      }, 'comp-id-1');
+
+      expect(res.isValid).toBe(true);
+    });
+
+    it('validates printer color: accepts Noir, Cyan, Magenta, Jaune and defaults to Noir', async () => {
+      const validCyan = await validateComposantData({
+        REF_composant: 'LIQ-CYAN',
+        nom: 'Encre Cyan',
+        id_Materiel: 'mat-test',
+        utilisation: '0%',
+        couleur: 'Cyan'
+      });
+      expect(validCyan.isValid).toBe(true);
+
+      const invalidColor = await validateComposantData({
+        REF_composant: 'LIQ-VERT',
+        nom: 'Encre Verte',
+        id_Materiel: 'mat-test',
+        utilisation: '0%',
+        couleur: 'Vert' as any
+      });
+      expect(invalidColor.isValid).toBe(false);
+      expect(invalidColor.field).toBe('couleur');
+      expect(invalidColor.message).toContain('La couleur doit être l\'une des couleurs principales d\'imprimante');
     });
   });
 
