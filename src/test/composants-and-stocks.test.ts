@@ -223,6 +223,39 @@ describe('Composant & Stock Management Test Suite', () => {
       expect(invalidColor.field).toBe('couleur');
       expect(invalidColor.message).toContain('La couleur doit être l\'une des couleurs principales d\'imprimante');
     });
+
+    it('rejects duplicate color for the same printer when editing or creating', async () => {
+      // Mock existing cyan liquid on the printer
+      (vi.spyOn(ComposantModel, 'findOne') as any).mockImplementation((query: any) => {
+        if (query && query.couleur === 'Cyan') {
+          return Promise.resolve({
+            _id: 'comp-existing-cyan',
+            id: 'comp-existing-cyan',
+            REF_composant: 'LIQ-CYAN-01',
+            couleur: 'Cyan',
+            id_Materiel: 'HP-M404',
+            refMateriel: 'HP-M404'
+          });
+        }
+        return Promise.resolve(null);
+      });
+
+      // Trying to set another liquid to Cyan on the same printer
+      const conflictRes = await validateComposantData(
+        {
+          REF_composant: 'LIQ-CYAN-02',
+          nom: 'Encre Cyan Nouvelle',
+          id_Materiel: 'mat-test',
+          utilisation: '0%',
+          couleur: 'Cyan'
+        },
+        'comp-new-or-other'
+      );
+
+      expect(conflictRes.isValid).toBe(false);
+      expect(conflictRes.field).toBe('couleur');
+      expect(conflictRes.message).toContain('possède déjà un liquide d\'écriture de couleur "Cyan"');
+    });
   });
 
   describe('2. itParkService Composants State & Operations', () => {

@@ -1090,6 +1090,29 @@ export async function validateComposantData(
     data.couleur = 'Noir';
   }
 
+  // Règle Métier : Unicité de la couleur par imprimante (pas de doublon Noir/Cyan/Magenta/Jaune sur la même imprimante)
+  try {
+    if (mongoose.connection.readyState === 1 || (Composant.findOne as any)?.mock) {
+      const existingSameColor = await Composant.findOne({
+        $or: [
+          { refMateriel: resolvedRef },
+          { id_Materiel: resolvedRef },
+        ],
+        couleur: data.couleur,
+        ...(existingId ? { _id: { $ne: existingId } } : {})
+      });
+      if (existingSameColor) {
+        return {
+          isValid: false,
+          message: `L'imprimante (${resolvedRef}) possède déjà un liquide d'écriture de couleur "${data.couleur}". Chaque imprimante ne peut avoir qu'un seul liquide par couleur.`,
+          field: 'couleur',
+        };
+      }
+    }
+  } catch {
+    // Ignorer si pas de connexion MongoDB
+  }
+
   // 4. Capacité : type enumerate ('grammage' | 'litrage') - Optionnel
   if (capaciteType && !['grammage', 'litrage'].includes(capaciteType)) {
     return {

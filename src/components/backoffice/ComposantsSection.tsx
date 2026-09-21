@@ -12,7 +12,14 @@ import {
   Layers,
   Percent,
   Printer,
-  Info
+  Info,
+  Check,
+  ArrowRight,
+  ArrowLeft,
+  Lock,
+  RefreshCw,
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import {
@@ -183,12 +190,67 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [compToDelete, setCompToDelete] = useState<Composant | null>(null);
 
+  // Onglet pour le modal d'édition : Page 1 (Infos & Contrôle couleur) ou Page 2 (Imprimantes assignées & Nouvelles assignations)
+  const [editModalTab, setEditModalTab] = useState<'page1_infos' | 'page2_assignations'>('page1_infos');
+  const [selectedTargetPrinters, setSelectedTargetPrinters] = useState<string[]>([]);
+  const [assigningLoading, setAssigningLoading] = useState(false);
+  const [colorConflictWarning, setColorConflictWarning] = useState<string | null>(null);
+
   // Informations sur l'imprimante actuellement sélectionnée dans le modal
   const selectedPrinterInfo = useMemo(() => {
     const r = (form.refMateriel || '').trim().toUpperCase();
     if (!r) return null;
     return imprimantesDisponibles.find(p => p.ref === r) || null;
   }, [form.refMateriel, imprimantesDisponibles]);
+
+  // Autres composants/liquides déjà assignés à cette même imprimante (hors liquide en cours d'édition)
+  const otherCompsOnPrinter = useMemo(() => {
+    if (!editingComp) return [];
+    const currentRef = (form.refMateriel || editingComp.refMateriel || editingComp.id_Materiel || '').trim().toUpperCase();
+    return composants.filter(c => {
+      if (c.id === editingComp.id) return false;
+      const cRef = (c.refMateriel || c.id_Materiel || '').trim().toUpperCase();
+      return cRef === currentRef;
+    });
+  }, [composants, editingComp, form.refMateriel]);
+
+  // Vérifier si une couleur est déjà occupée par un autre liquide de cette même imprimante
+  const getConflictingCompForColor = (colorId: string) => {
+    return otherCompsOnPrinter.find(c => (c.couleur || '').toLowerCase() === colorId.toLowerCase());
+  };
+
+  // Liste des imprimantes candidates pour une assignation (Page 2)
+  // Critères demandés : imprimantes vides (0/4) ou dont le liquide restant est à 0%
+  const eligiblePrintersForAssignation = useMemo(() => {
+    const currentRef = (form.refMateriel || '').trim().toUpperCase();
+    const currentColor = form.couleur || 'Noir';
+
+    return imprimantesDisponibles.filter(p => {
+      // Exclure l'imprimante déjà assignée actuellement
+      if (p.ref.toUpperCase() === currentRef) return false;
+
+      // 1. Imprimante vide (aucun liquide)
+      if (p.liquidesCount === 0) return true;
+
+      // 2. Imprimante avec moins de 4 liquides et dont cette couleur n'est pas encore occupée
+      const hasSameColor = p.existingLiquides.some(
+        c => (c.couleur || '').toLowerCase() === currentColor.toLowerCase()
+      );
+      if (!hasSameColor && p.liquidesCount < 4) return true;
+
+      // 3. Imprimante ayant un liquide pour cette couleur dont l'utilisation est à 0% (en réserve/stock)
+      const sameColorComp = p.existingLiquides.find(
+        c => (c.couleur || '').toLowerCase() === currentColor.toLowerCase()
+      );
+      if (sameColorComp && sameColorComp.utilisation === '0%') return true;
+
+      // 4. Imprimante ayant au moins un liquide à 0% et une place restante
+      const hasZeroPercentLiquid = p.existingLiquides.some(c => c.utilisation === '0%');
+      if (hasZeroPercentLiquid && p.liquidesCount <= 4) return true;
+
+      return false;
+    });
+  }, [imprimantesDisponibles, form.refMateriel, form.couleur]);
 
   // Ouvrir modal pour créer
   const handleOpenCreateModal = () => {
@@ -290,6 +352,9 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
   // Ouvrir modal pour éditer un liquide existant
   const handleOpenEditModal = (comp: Composant) => {
     setModalAlert(null);
+    setColorConflictWarning(null);
+    setEditModalTab('page1_infos');
+    setSelectedTargetPrinters([]);
     setEditingComp(comp);
     const currentRef = (comp.refMateriel || comp.materielReference || comp.id_Materiel || '').trim().toUpperCase();
     setForm({
@@ -302,6 +367,111 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     });
     setMultiLiquides([]);
     setIsModalOpen(true);
+  };
+
+  // Sélection sécurisée de la couleur en mode édition (Contrôle strict Page 1)
+  const handleSelectColorInEdit = (colorId: CouleurImprimante) => {
+    const conflict = getConflictingCompForColor(colorId);
+    if (conflict) {
+      setColorConflictWarning(
+        `Modification impossible : l'imprimante associée (${selectedPrinterInfo?.ref || form.refMateriel}) possède déjà un liquide d'écriture ${colorId} (Réf: ${conflict.REF_composant} - "${conflict.nom}"). Chaque imprimante ne peut comporter qu'un seul liquide par couleur.`
+      );
+      return;
+    }
+    setColorConflictWarning(null);
+    setForm(prev => ({ ...prev, couleur: colorId }));
+  };
+
+  // Assigner ce liquide à une ou plusieurs imprimantes sélectionnées (Page 2)
+  const handleAssignToSelectedPrinters = async () => {
+    if (selectedTargetPrinters.length === 0) {
+      setModalAlert({
+        type: 'warning',
+        message: "Veuillez cocher au moins une imprimante éligible pour effectuer l'assignation.",
+      });
+      return;
+    }
+
+    setAssigningLoading(true);
+    setModalAlert(null);
+
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const targetRef of selectedTargetPrinters) {
+      const printer = imprimantesDisponibles.find(p => p.ref === targetRef);
+      if (!printer) continue;
+
+      // Vérifier si cette imprimante a déjà un liquide à 0% pour cette même couleur
+      const existingSameColor = printer.existingLiquides.find(
+        c => (c.couleur || '').toLowerCase() === (form.couleur || 'Noir').toLowerCase()
+      );
+
+      if (existingSameColor && existingSameColor.utilisation === '0%') {
+        // Mettre à jour ce liquide existant à 0%
+        const res = await itParkService.saveComposant({
+          id: existingSameColor.id,
+          REF_composant: existingSameColor.REF_composant,
+          nom: form.nom,
+          couleur: form.couleur,
+          refMateriel: targetRef,
+          utilisation: form.utilisation,
+          description: form.description,
+        });
+        if (res.success) {
+          successCount++;
+        } else {
+          errors.push(`${targetRef}: ${res.message || 'Erreur mise à jour'}`);
+        }
+      } else {
+        // Créer une nouvelle affectation de liquide pour cette imprimante cible
+        const colPrefix = COULEURS_IMPRIMANTE.find(c => c.id === form.couleur)?.prefix || 'LIQ';
+        const candidateRef = `${form.REF_composant}-${targetRef}`;
+        const finalRef = composants.some(c => c.REF_composant === candidateRef)
+          ? `LIQ-${colPrefix}-${targetRef}-${Math.floor(100 + Math.random() * 900)}`
+          : candidateRef;
+
+        const res = await itParkService.saveComposant({
+          REF_composant: finalRef,
+          nom: form.nom,
+          couleur: form.couleur,
+          refMateriel: targetRef,
+          utilisation: form.utilisation,
+          description: form.description,
+        });
+
+        if (res.success) {
+          successCount++;
+        } else {
+          errors.push(`${targetRef}: ${res.message || 'Erreur assignation'}`);
+        }
+      }
+    }
+
+    setAssigningLoading(false);
+
+    if (successCount > 0) {
+      setModalAlert({
+        type: 'success',
+        message: `Liquide d'écriture "${form.nom}" (${form.couleur}) assigné avec succès à ${successCount} imprimante(s) !`,
+      });
+      setSelectedTargetPrinters([]);
+      onRefresh();
+    } else if (errors.length > 0) {
+      setModalAlert({
+        type: 'error',
+        message: `Échec de l'assignation : ${errors.join(', ')}`,
+      });
+    }
+  };
+
+  // Transférer l'imprimante principale vers une autre imprimante
+  const handleTransferPrimaryPrinter = (targetRef: string) => {
+    setForm(prev => ({ ...prev, refMateriel: targetRef }));
+    setModalAlert({
+      type: 'info',
+      message: `Imprimante principale réaffectée à ${targetRef}. Cliquez sur "Mettre à jour" pour valider.`,
+    });
   };
 
   // Sauvegarde (Création multiple ou Modification unique)
@@ -321,6 +491,17 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
     setIsSaving(true);
     try {
       if (editingComp) {
+        // Vérification de sécurité couleur : pas de doublon sur la même imprimante
+        const conflict = getConflictingCompForColor(form.couleur);
+        if (conflict) {
+          setModalAlert({
+            type: 'error',
+            message: `Impossible d'enregistrer : l'imprimante ${cleanRefUpper} possède déjà un liquide d'écriture ${form.couleur} (Réf: ${conflict.REF_composant} - "${conflict.nom}"). Chaque imprimante ne peut comporter qu'un seul liquide par couleur.`,
+          });
+          setIsSaving(false);
+          return;
+        }
+
         // Modification d'un seul liquide
         if (!form.REF_composant.trim()) {
           setModalAlert({
@@ -985,115 +1166,482 @@ export const ComposantsSection: React.FC<ComposantsSectionProps> = ({
                 )}
               </div>
 
-              {/* Cas 1 : Modification d'un liquide existant */}
+              {/* Cas 1 : Modification d'un liquide existant (Formulaire à 2 pages : Page 1 Infos & Contrôle couleur / Page 2 Imprimantes & Assignations) */}
               {editingComp ? (
-                <div className="space-y-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200">
-                  {/* Choix Couleur Principale */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
-                      Couleur Principale de l'Imprimante <span className="text-red-500">*</span>
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {COULEURS_IMPRIMANTE.map((col) => (
-                        <button
-                          key={col.id}
-                          type="button"
-                          onClick={() => setForm({ ...form, couleur: col.id })}
-                          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                            form.couleur === col.id
-                              ? `${col.badgeBg} ${col.badgeText} border-gray-900 shadow-sm ring-2 ring-gray-900/10`
-                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                          }`}
-                        >
-                          <span
-                            className="w-3 h-3 rounded-full shrink-0 border border-black/20"
-                            style={{ backgroundColor: col.colorHex }}
-                          />
-                          <span>{col.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* REF & Nom */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                        RÉF Liquide (Unique) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={form.REF_composant}
-                        onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
-                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                        Nom / Désignation <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={form.nom}
-                        onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Taux d'Utilisation */}
-                  <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
-                        Taux d'Utilisation <span className="text-red-500">*</span>
-                      </label>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
-                        form.utilisation === '0%'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : form.utilisation === '100%'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800'
+                <div className="space-y-4">
+                  {/* Onglets de navigation Page 1 & Page 2 */}
+                  <div className="flex border-b border-gray-200 bg-gray-50/80 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setEditModalTab('page1_infos')}
+                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        editModalTab === 'page1_infos'
+                          ? 'bg-white text-red-700 shadow-sm border border-gray-200'
+                          : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                        editModalTab === 'page1_infos' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
                       }`}>
-                        {form.utilisation === '0%' ? '✅ En Stock (0%)' : `Sorti du stock (${form.utilisation})`}
+                        1
                       </span>
-                    </div>
+                      <span>Page 1 : Informations du liquide</span>
+                    </button>
 
-                    <div className="grid grid-cols-5 gap-2 pt-1">
-                      {(['0%', '25%', '50%', '75%', '100%'] as TauxUtilisationComposant[]).map((val) => (
+                    <button
+                      type="button"
+                      onClick={() => setEditModalTab('page2_assignations')}
+                      className={`flex-1 py-2.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        editModalTab === 'page2_assignations'
+                          ? 'bg-white text-purple-700 shadow-sm border border-gray-200'
+                          : 'text-gray-500 hover:text-gray-900 hover:bg-white/50'
+                      }`}
+                    >
+                      <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
+                        editModalTab === 'page2_assignations' ? 'bg-purple-100 text-purple-700' : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        2
+                      </span>
+                      <span>Page 2 : Imprimantes & Assignations</span>
+                      {eligiblePrintersForAssignation.length > 0 && (
+                        <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                          {eligiblePrintersForAssignation.length} dispo
+                        </span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* ================= PAGE 1 : INFORMATIONS & CONTRÔLE COULEUR ================= */}
+                  {editModalTab === 'page1_infos' && (
+                    <div className="space-y-4 bg-gray-50/50 p-4 rounded-xl border border-gray-200">
+                      {/* Alerte si conflit de couleur détecté */}
+                      {colorConflictWarning && (
+                        <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-start gap-2.5 text-rose-900 text-xs shadow-xs animate-in fade-in">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="font-bold">Modification de couleur interdite :</p>
+                            <p className="text-[11px] text-rose-800 mt-0.5">{colorConflictWarning}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setColorConflictWarning(null)}
+                            className="text-rose-500 hover:text-rose-700 p-0.5"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Choix Couleur Principale avec Contrôle d'unicité par imprimante */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            Couleur Principale de l'Imprimante <span className="text-red-500">*</span>
+                          </label>
+                          <span className="text-[11px] text-gray-500">
+                            (Un seul liquide par couleur par imprimante)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {COULEURS_IMPRIMANTE.map((col) => {
+                            const conflict = getConflictingCompForColor(col.id);
+                            const isSelected = form.couleur === col.id;
+                            const isBlocked = !!conflict && !isSelected;
+
+                            return (
+                              <button
+                                key={col.id}
+                                type="button"
+                                onClick={() => handleSelectColorInEdit(col.id)}
+                                className={`relative flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                  isSelected
+                                    ? `${col.badgeBg} ${col.badgeText} border-gray-900 shadow-sm ring-2 ring-gray-900/15`
+                                    : isBlocked
+                                    ? 'bg-gray-100 text-gray-400 border-gray-200 hover:border-rose-300 hover:bg-rose-50/50'
+                                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`w-3.5 h-3.5 rounded-full shrink-0 border ${
+                                      isBlocked ? 'opacity-40 border-gray-300' : 'border-black/20'
+                                    }`}
+                                    style={{ backgroundColor: col.colorHex }}
+                                  />
+                                  <span>{col.label}</span>
+                                  {isBlocked && <Lock className="w-3 h-3 text-rose-500 ml-0.5" />}
+                                </div>
+
+                                {isBlocked && (
+                                  <span className="text-[9px] text-rose-700 mt-1 font-medium bg-rose-100/70 px-1 py-0.5 rounded leading-none text-center">
+                                    Déjà pris ({conflict.REF_composant})
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* REF & Nom */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                            RÉF Liquide (Unique) <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={form.REF_composant}
+                            onChange={(e) => setForm({ ...form, REF_composant: e.target.value.toUpperCase() })}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-red-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                            Nom / Désignation <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={form.nom}
+                            onChange={(e) => setForm({ ...form, nom: e.target.value })}
+                            className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Taux d'Utilisation */}
+                      <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-gray-800 uppercase tracking-wider">
+                            Taux d'Utilisation <span className="text-red-500">*</span>
+                          </label>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                            form.utilisation === '0%'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : form.utilisation === '100%'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {form.utilisation === '0%' ? '✅ En Stock (0%)' : `Sorti du stock (${form.utilisation})`}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-5 gap-2 pt-1">
+                          {(['0%', '25%', '50%', '75%', '100%'] as TauxUtilisationComposant[]).map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setForm({ ...form, utilisation: val })}
+                              className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                form.utilisation === val
+                                  ? val === '0%'
+                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                    : val === '100%'
+                                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                    : 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                              }`}
+                            >
+                              {val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+                          Description / Remarques (Optionnel)
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={form.description}
+                          onChange={(e) => setForm({ ...form, description: e.target.value })}
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                      </div>
+
+                      {/* Bouton pour passer à la Page 2 */}
+                      <div className="pt-2">
                         <button
-                          key={val}
                           type="button"
-                          onClick={() => setForm({ ...form, utilisation: val })}
-                          className={`py-2 px-1 text-center rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                            form.utilisation === val
-                              ? val === '0%'
-                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                                : val === '100%'
-                                ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
-                                : 'bg-amber-500 text-white border-amber-500 shadow-sm'
-                              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                          }`}
+                          onClick={() => setEditModalTab('page2_assignations')}
+                          className="w-full py-2.5 px-4 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
                         >
-                          {val}
+                          <span>Passer à la Page 2 : Imprimantes & Assignations</span>
+                          <ArrowRight className="w-4 h-4" />
                         </button>
-                      ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Description */}
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-                      Description / Remarques (Optionnel)
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={form.description}
-                      onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-500"
-                    />
-                  </div>
+                  {/* ================= PAGE 2 : IMPRIMANTES ASSIGNÉES & NOUVELLES ASSIGNATIONS ================= */}
+                  {editModalTab === 'page2_assignations' && (
+                    <div className="space-y-4">
+                      {/* Section 1 : Imprimante(s) actuellement assignée(s) & Pourcentage actuel */}
+                      <div className="p-4 bg-purple-50/80 rounded-xl border border-purple-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Printer className="w-4 h-4 text-purple-700" />
+                            <h4 className="text-xs font-bold text-purple-900 uppercase tracking-wider">
+                              Imprimante Associée & Pourcentage Actuel
+                            </h4>
+                          </div>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-purple-200/70 text-purple-800">
+                            Assignée
+                          </span>
+                        </div>
+
+                        {/* Carte détaillée imprimante actuelle */}
+                        <div className="bg-white p-3.5 rounded-lg border border-purple-200 space-y-3 text-xs">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 text-sm">
+                                  {selectedPrinterInfo?.ref || form.refMateriel}
+                                </span>
+                                <span className="text-gray-500">
+                                  — {selectedPrinterInfo?.designation || 'Imprimante'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-gray-500 mt-0.5">
+                                {selectedPrinterInfo?.machines.length || 1} machine(s) physique(s) liée(s) à ce modèle
+                              </p>
+                            </div>
+                            <span className="text-xs font-mono font-semibold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                              Réf : {form.refMateriel}
+                            </span>
+                          </div>
+
+                          {/* Jauge du Pourcentage Actuel du Liquide */}
+                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-gray-700 flex items-center gap-1.5">
+                                <span
+                                  className="w-3 h-3 rounded-full border border-black/20"
+                                  style={{
+                                    backgroundColor:
+                                      COULEURS_IMPRIMANTE.find(c => c.id === form.couleur)?.colorHex || '#111827'
+                                  }}
+                                />
+                                Niveau d'encre ({form.couleur || 'Noir'}) :
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900">{form.utilisation} utilisé</span>
+                                <span className="text-gray-400">•</span>
+                                <span className="font-bold text-purple-700">
+                                  {100 - (parseInt(form.utilisation.replace('%', ''), 10) || 0)}% restant
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Barre de progression */}
+                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden p-0.5">
+                              <div
+                                className="h-full rounded-full transition-all duration-300"
+                                style={{
+                                  width: `${Math.max(5, 100 - (parseInt(form.utilisation.replace('%', ''), 10) || 0))}%`,
+                                  backgroundColor:
+                                    form.couleur === 'Cyan'
+                                      ? '#06b6d4'
+                                      : form.couleur === 'Magenta'
+                                      ? '#db2777'
+                                      : form.couleur === 'Jaune'
+                                      ? '#eab308'
+                                      : '#1f2937'
+                                }}
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-gray-500 pt-0.5">
+                              <span>0% (Plein / En stock)</span>
+                              <span>100% (Épuisé)</span>
+                            </div>
+                          </div>
+
+                          {/* Machines physiques réelles */}
+                          {selectedPrinterInfo && selectedPrinterInfo.machines.length > 0 && (
+                            <div className="pt-1">
+                              <span className="text-[11px] font-semibold text-gray-600 block mb-1">
+                                Machines physiques en service :
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {selectedPrinterInfo.machines.map((m) => (
+                                  <div key={m.id} className="p-2 bg-gray-50 rounded border border-gray-200 text-[11px]">
+                                    <div className="font-mono font-bold text-gray-800">{m.codeSerie || m.reference || m.id}</div>
+                                    <div className="text-gray-500 text-[10px]">
+                                      {m.statut || 'En service'}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Section 2 : Possibilité d'assignation à un ou plusieurs imprimantes vides ou à 0% */}
+                      <div className="p-4 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-emerald-700" />
+                            <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">
+                              Assigner à d'autres imprimantes (Vides ou liquide 0%)
+                            </h4>
+                          </div>
+                          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                            {eligiblePrintersForAssignation.length} imprimante(s) éligible(s)
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-emerald-900 leading-relaxed">
+                          Sélectionnez une ou plusieurs imprimantes disponibles du parc pour leur assigner également ce liquide d'écriture ({form.couleur}) :
+                        </p>
+
+                        {/* Liste des Imprimantes Éligibles avec sélection multiple */}
+                        {eligiblePrintersForAssignation.length === 0 ? (
+                          <div className="p-3 bg-white rounded-lg border border-emerald-200 text-xs text-gray-500 text-center">
+                            Aucune autre imprimante éligible n'est actuellement disponible (toutes les imprimantes ont atteint 4 liquides ou possèdent déjà cette couleur active).
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* Boutons Sélectionner Tout / Désélectionner */}
+                            <div className="flex items-center justify-between text-xs pb-1">
+                              <span className="text-gray-600 font-medium">
+                                {selectedTargetPrinters.length} sélectionnée(s) sur {eligiblePrintersForAssignation.length}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTargetPrinters(eligiblePrintersForAssignation.map(p => p.ref))}
+                                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 underline cursor-pointer"
+                                >
+                                  Tout sélectionner
+                                </button>
+                                <span className="text-gray-300">|</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTargetPrinters([])}
+                                  className="text-[11px] font-medium text-gray-500 hover:text-gray-700 cursor-pointer"
+                                >
+                                  Effacer
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Liste défilable des imprimantes candidates */}
+                            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                              {eligiblePrintersForAssignation.map((printer) => {
+                                const isChecked = selectedTargetPrinters.includes(printer.ref);
+                                const isZeroPercent = printer.existingLiquides.some(c => c.utilisation === '0%');
+                                const isCompletelyEmpty = printer.liquidesCount === 0;
+
+                                return (
+                                  <div
+                                    key={printer.ref}
+                                    onClick={() => {
+                                      setSelectedTargetPrinters(prev =>
+                                        isChecked ? prev.filter(r => r !== printer.ref) : [...prev, printer.ref]
+                                      );
+                                    }}
+                                    className={`p-2.5 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-all ${
+                                      isChecked
+                                        ? 'bg-emerald-100/70 border-emerald-400 text-emerald-950 font-semibold'
+                                        : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
+                                        isChecked
+                                          ? 'bg-emerald-600 border-emerald-600 text-white'
+                                          : 'bg-white border-gray-300'
+                                      }`}>
+                                        {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-mono font-bold text-gray-900">{printer.ref}</span>
+                                          <span className="text-gray-600">— {printer.designation}</span>
+                                        </div>
+                                        <div className="text-[10px] text-gray-500">
+                                          {printer.machines.length} machine(s) physique(s)
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Statut d'éligibilité */}
+                                    <div>
+                                      {isCompletelyEmpty ? (
+                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                          ✨ Imprimante vide (0/4)
+                                        </span>
+                                      ) : isZeroPercent ? (
+                                        <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                          🔄 Liquide à 0% restant
+                                        </span>
+                                      ) : (
+                                        <span className="bg-gray-100 text-gray-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                          {4 - printer.liquidesCount} place(s) libre(s)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Bouton d'action pour assigner aux imprimantes sélectionnées */}
+                            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                              <button
+                                type="button"
+                                disabled={selectedTargetPrinters.length === 0 || assigningLoading}
+                                onClick={handleAssignToSelectedPrinters}
+                                className="flex-1 py-2 px-3 bg-emerald-600 text-white font-bold text-xs rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                              >
+                                {assigningLoading ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Assignation en cours...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Assigner à la sélection ({selectedTargetPrinters.length} imprimante{selectedTargetPrinters.length > 1 ? 's' : ''})</span>
+                                  </>
+                                )}
+                              </button>
+
+                              {selectedTargetPrinters.length === 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleTransferPrimaryPrinter(selectedTargetPrinters[0])}
+                                  className="py-2 px-3 bg-white border border-purple-300 text-purple-700 hover:bg-purple-50 font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                                  title="Définir cette imprimante comme imprimante principale associée"
+                                >
+                                  Définir comme principale
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bouton de retour à la Page 1 */}
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setEditModalTab('page1_infos')}
+                          className="w-full py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <ArrowLeft className="w-3.5 h-3.5" />
+                          <span>Revenir à la Page 1 (Modifier les informations & couleur)</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : selectedPrinterInfo?.isFull ? (
                 /* Cas 2 : Imprimante PLEINE (4 liquides atteints) - Message de complétion au lieu du bouton d'ajout */
