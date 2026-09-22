@@ -14,6 +14,7 @@ import {
   Role,
   Reclamation,
   EmailLog,
+  FutureMateriel,
 } from '../types/itPark';
 import { authService } from './authService';
 
@@ -27,6 +28,7 @@ class ITParkService {
   private beneficiaires: Beneficiaire[] = [];
   private materiels: Materiel[] = [];
   private composants: Composant[] = [];
+  private futureMateriels: FutureMateriel[] = [];
   private reclamations: Reclamation[] = [];
   private emailLogs: EmailLog[] = [];
   private dashboardStats: DashboardStats | null = null;
@@ -59,6 +61,7 @@ class ITParkService {
     this.beneficiaires = [];
     this.materiels = [];
     this.composants = [];
+    this.futureMateriels = [];
     this.reclamations = [];
     this.emailLogs = [];
     this.dashboardStats = null;
@@ -171,6 +174,33 @@ class ITParkService {
             description: c.description || '',
             createdAt: c.createdAt,
             updatedAt: c.updatedAt,
+          }));
+        }
+      }
+
+      // Sync Future Materiels from MongoDB
+      const resFuture = await authService.fetchWithAuth('/api/future-materiels');
+      if (resFuture.ok) {
+        const futures = await resFuture.json();
+        if (Array.isArray(futures)) {
+          this.futureMateriels = futures.map((f: any) => ({
+            id: f.id || f._id,
+            imageMateriel: f.imageMateriel || '',
+            imageFicheMateriel: f.imageFicheMateriel || '',
+            imageFacture: f.imageFacture || '',
+            imageBarcode: f.imageBarcode || '',
+            barcode1: f.barcode1 || '',
+            barcode2: f.barcode2 || '',
+            barcode3: f.barcode3 || '',
+            barcode4: f.barcode4 || '',
+            barcode5: f.barcode5 || '',
+            designation: f.designation || '',
+            referenceProposee: f.referenceProposee || '',
+            codeSeriePropose: f.codeSeriePropose || f.barcode1 || f.barcode3 || '',
+            statut: f.statut || 'En attente',
+            id_MaterielCree: f.id_MaterielCree || '',
+            dateCreation: f.dateCreation || '',
+            notes: f.notes || '',
           }));
         }
       }
@@ -974,6 +1004,122 @@ class ITParkService {
       }
       await this.syncFromBackend();
       return { success: true };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Erreur réseau ou serveur' };
+    }
+  }
+
+  // --- FUTURS MATÉRIELS (PRÉ-INVENTAIRE PAR IMAGES & BARCODE) ---
+  public getFutureMateriels(): FutureMateriel[] {
+    return [...this.futureMateriels];
+  }
+
+  public getFutureMaterielById(id: string): FutureMateriel | undefined {
+    return this.futureMateriels.find((f) => f.id === id);
+  }
+
+  public async saveFutureMateriel(fm: Partial<FutureMateriel>): Promise<{ success: boolean; message?: string; field?: string; data?: FutureMateriel }> {
+    try {
+      let res: Response;
+      if (fm.id && this.futureMateriels.some((f) => f.id === fm.id)) {
+        res = await authService.fetchWithAuth(`/api/future-materiels/${fm.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(fm),
+        });
+      } else {
+        res = await authService.fetchWithAuth('/api/future-materiels', {
+          method: 'POST',
+          body: JSON.stringify(fm),
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.message || "Erreur lors de l'enregistrement du futur matériel", field: data.field };
+      }
+      await this.syncFromBackend();
+      return { success: true, data };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Erreur réseau ou serveur' };
+    }
+  }
+
+  public async deleteFutureMateriel(id: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await authService.fetchWithAuth(`/api/future-materiels/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.message || 'Erreur lors de la suppression' };
+      }
+      await this.syncFromBackend();
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Erreur réseau ou serveur' };
+    }
+  }
+
+  public async checkSerialInMateriels(serial: string, currentFutureId?: string): Promise<{ existsInMateriels: boolean; existsInFuture: boolean; materiel?: Materiel | null; futureMateriel?: FutureMateriel | null }> {
+    try {
+      const clean = (serial || '').trim();
+      if (!clean) return { existsInMateriels: false, existsInFuture: false };
+
+      const res = await authService.fetchWithAuth('/api/future-materiels/check-serial', {
+        method: 'POST',
+        body: JSON.stringify({ serial: clean, currentFutureId }),
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+
+      // Fallback local
+      const localMat = this.materiels.find(m => (m.codeSerie || '').toLowerCase() === clean.toLowerCase());
+      const localFuture = this.futureMateriels.find(f => 
+        f.id !== currentFutureId && 
+        ((f.codeSeriePropose || '').toLowerCase() === clean.toLowerCase() || 
+         (f.barcode1 || '').toLowerCase() === clean.toLowerCase() ||
+         (f.barcode3 || '').toLowerCase() === clean.toLowerCase())
+      );
+      return {
+        existsInMateriels: !!localMat,
+        existsInFuture: !!localFuture,
+        materiel: localMat || null,
+        futureMateriel: localFuture || null,
+      };
+    } catch {
+      const clean = (serial || '').trim();
+      const localMat = this.materiels.find(m => (m.codeSerie || '').toLowerCase() === clean.toLowerCase());
+      return { existsInMateriels: !!localMat, existsInFuture: false, materiel: localMat || null };
+    }
+  }
+
+  public async deleteMaterielBySerial(serial: string): Promise<{ success: boolean; message?: string; deletedMatId?: string }> {
+    try {
+      const clean = encodeURIComponent((serial || '').trim());
+      const res = await authService.fetchWithAuth(`/api/future-materiels/delete-from-materiels/${clean}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.message || 'Erreur lors de la suppression du matériel' };
+      }
+      await this.syncFromBackend();
+      return { success: true, message: data.message, deletedMatId: data.deletedMatId };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Erreur réseau ou serveur' };
+    }
+  }
+
+  public async convertFutureToMateriel(futureId: string, matData: any): Promise<{ success: boolean; message?: string; field?: string; materiel?: Materiel }> {
+    try {
+      const res = await authService.fetchWithAuth(`/api/future-materiels/${futureId}/convert-to-materiel`, {
+        method: 'POST',
+        body: JSON.stringify(matData),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        return { success: false, message: data.message || 'Erreur lors de la validation et conversion', field: data.field };
+      }
+      await this.syncFromBackend();
+      return { success: true, message: data.message, materiel: data.materiel };
     } catch (e: any) {
       return { success: false, message: e.message || 'Erreur réseau ou serveur' };
     }

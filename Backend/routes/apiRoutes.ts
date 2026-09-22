@@ -13,6 +13,7 @@ import { EmailLog } from '../models/EmailLog';
 import { Message } from '../models/Message';
 import { Conversation } from '../models/Conversation';
 import { Composant } from '../models/Composant';
+import { FutureMateriel } from '../models/FutureMateriel';
 import {
   sendWelcomeEmail,
   sendAccountUpdatedEmail,
@@ -655,6 +656,257 @@ router.delete('/materiels/:id', async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// ================= FUTURS MATÉRIELS (PRÉ-INVENTAIRE PAR IMAGES & BARCODE) =================
+// 1. Lister tous les futurs matériels
+router.get('/future-materiels', async (_req, res) => {
+  try {
+    const list = await FutureMateriel.find().sort({ createdAt: -1 });
+    res.json(list);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 2. Vérifier si un code série existe déjà dans les matériels ou futurs matériels
+router.post('/future-materiels/check-serial', async (req, res) => {
+  try {
+    const { serial, currentFutureId } = req.body;
+    if (!serial || !String(serial).trim()) {
+      return res.json({ existsInMateriels: false, existsInFuture: false, materiel: null, futureMateriel: null });
+    }
+    const cleanSerial = String(serial).trim();
+    const regex = new RegExp(`^${cleanSerial.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+    // Vérification dans la table des matériels
+    const existingMat = await Materiel.findOne({ codeSerie: regex });
+
+    // Vérification dans la table des futurs matériels (sauf si c'est le document lui-même)
+    const futureQuery: any = {
+      $or: [
+        { barcode: regex },
+        { codeSeriePropose: regex },
+        { barcode1: regex },
+        { barcode3: regex },
+      ]
+    };
+    if (currentFutureId) {
+      futureQuery._id = { $ne: currentFutureId };
+    }
+    const existingFuture = await FutureMateriel.findOne(futureQuery);
+
+    res.json({
+      existsInMateriels: !!existingMat,
+      existsInFuture: !!existingFuture,
+      materiel: existingMat,
+      futureMateriel: existingFuture,
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 3. Créer un futur matériel avec vérification préalable si barcode/série est fourni
+router.post('/future-materiels', async (req, res) => {
+  try {
+    const data = req.body;
+    const serialToCheck = (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim();
+
+    // Si un barcode / code série a été détecté depuis la photo, vérifier l'existence avant enregistrement
+    if (serialToCheck) {
+      const regex = new RegExp(`^${serialToCheck.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      const conflictMat = await Materiel.findOne({ codeSerie: regex });
+      if (conflictMat) {
+        return res.status(400).json({
+          message: `Ce code série/barcode ("${serialToCheck}") existe déjà dans les matériels existants (${conflictMat.designation} - Réf: ${conflictMat.reference}).`,
+          field: 'barcode',
+          conflictType: 'materiel',
+          conflictItem: conflictMat,
+        });
+      }
+
+      const conflictFuture = await FutureMateriel.findOne({
+        $or: [{ barcode: regex }, { codeSeriePropose: regex }, { barcode1: regex }, { barcode3: regex }]
+      });
+      if (conflictFuture) {
+        return res.status(400).json({
+          message: `Ce code série/barcode ("${serialToCheck}") a déjà été enregistré dans un autre futur matériel (${conflictFuture.designation || conflictFuture.referenceProposee || 'Sans nom'}).`,
+          field: 'barcode',
+          conflictType: 'future',
+          conflictItem: conflictFuture,
+        });
+      }
+    }
+
+    const newFuture = new FutureMateriel({
+      imageMateriel: data.imageMateriel || '',
+      imageFicheMateriel: data.imageFicheMateriel || '',
+      imageFacture: data.imageFacture || '',
+      imageBarcode: data.imageBarcode || '',
+      barcode: (data.barcode || data.barcode1 || '').trim(),
+      barcode1: (data.barcode1 || data.barcode || '').trim(),
+      barcode2: (data.barcode2 || '').trim(),
+      barcode3: (data.barcode3 || data.barcode || '').trim(),
+      barcode4: (data.barcode4 || '').trim(),
+      barcode5: (data.barcode5 || '').trim(),
+      designation: (data.designation || '').trim(),
+      referenceProposee: (data.referenceProposee || '').trim().toUpperCase(),
+      codeSeriePropose: (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim(),
+      statut: data.statut || 'En attente',
+      dateCreation: data.dateCreation || new Date().toISOString().split('T')[0],
+      notes: data.notes || '',
+    });
+
+    await newFuture.save();
+    res.status(201).json(newFuture);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// 4. Modifier un futur matériel
+router.put('/future-materiels/:id', async (req, res) => {
+  try {
+    const doc = await safeFindDoc(FutureMateriel, req.params.id) || await FutureMateriel.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ message: 'Futur matériel introuvable.' });
+    }
+
+    const data = req.body;
+    const serialToCheck = (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim();
+
+    if (serialToCheck) {
+      const regex = new RegExp(`^${serialToCheck.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+      const conflictFuture = await FutureMateriel.findOne({
+        _id: { $ne: doc._id },
+        $or: [{ barcode: regex }, { codeSeriePropose: regex }, { barcode1: regex }, { barcode3: regex }]
+      });
+      if (conflictFuture) {
+        return res.status(400).json({
+          message: `Ce code série/barcode ("${serialToCheck}") est déjà utilisé par un autre futur matériel.`,
+          field: 'barcode',
+        });
+      }
+    }
+
+    const updated = await FutureMateriel.findByIdAndUpdate(doc._id, data, { new: true });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// 5. Supprimer un futur matériel
+router.delete('/future-materiels/:id', async (req, res) => {
+  try {
+    const doc = await safeFindDoc(FutureMateriel, req.params.id) || await FutureMateriel.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ message: 'Futur matériel introuvable.' });
+    }
+    await FutureMateriel.findByIdAndDelete(doc._id);
+    res.json({ message: 'Futur matériel supprimé avec succès.', id: req.params.id });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 6. Supprimer de "materiels" par code série (si le matériel existe déjà)
+router.delete('/future-materiels/delete-from-materiels/:serial', async (req, res) => {
+  try {
+    const rawSerial = req.params.serial;
+    if (!rawSerial || !rawSerial.trim()) {
+      return res.status(400).json({ message: 'Code série non fourni.' });
+    }
+    const cleanSerial = rawSerial.trim();
+    const regex = new RegExp(`^${cleanSerial.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+
+    const mat = await Materiel.findOne({ codeSerie: regex });
+    if (!mat) {
+      return res.status(404).json({ message: `Aucun matériel avec le code série "${cleanSerial}" n'a été trouvé.` });
+    }
+
+    const matIdStr = String(mat._id);
+    // Nettoyer les réclamations
+    await Reclamation.updateMany(
+      { $or: [{ id_MaterielConcerne: matIdStr }, { materielsConcernesIds: matIdStr }] },
+      { $unset: { id_MaterielConcerne: 1 }, $pull: { materielsConcernesIds: matIdStr } }
+    );
+
+    // Supprimer le matériel
+    await Materiel.findByIdAndDelete(mat._id);
+
+    // Si un futur matériel avait été marqué avec cet ID, le repasser en attente
+    await FutureMateriel.updateMany(
+      { id_MaterielCree: matIdStr },
+      { $set: { statut: 'En attente', id_MaterielCree: '' } }
+    );
+
+    res.json({
+      message: `Le matériel "${mat.designation}" (Code Série: ${cleanSerial}, Réf: ${mat.reference}) a été supprimé du parc de matériels avec succès.`,
+      deletedMatId: matIdStr
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 7. Transformer / Valider le futur matériel en matériel réel
+router.post('/future-materiels/:id/convert-to-materiel', async (req, res) => {
+  try {
+    const doc = await safeFindDoc(FutureMateriel, req.params.id) || await FutureMateriel.findById(req.params.id);
+    if (!doc) {
+      return res.status(404).json({ message: 'Futur matériel introuvable.' });
+    }
+
+    const matData = req.body;
+    // Vérification obligatoire par code série avant la transformation
+    const serial = (matData.codeSerie || doc.codeSeriePropose || doc.barcode1 || '').trim();
+    if (!serial) {
+      return res.status(400).json({
+        message: 'Le code série est obligatoire pour valider et transformer ce futur matériel en matériel.',
+        field: 'codeSerie'
+      });
+    }
+
+    const regex = new RegExp(`^${serial.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const existingMat = await Materiel.findOne({ codeSerie: regex });
+    if (existingMat) {
+      return res.status(400).json({
+        message: `Impossible de transformer : un matériel avec le code série "${serial}" existe déjà dans le parc (${existingMat.designation} - Réf: ${existingMat.reference}).`,
+        field: 'codeSerie',
+        conflictItem: existingMat,
+      });
+    }
+
+    // Valider les données du matériel via le validateur métier
+    const validation = await validateMaterielData(matData);
+    if (!validation.isValid) {
+      return res.status(400).json({ message: validation.message, field: validation.field });
+    }
+
+    // Créer le matériel
+    const newMat = new Materiel({
+      ...matData,
+      reference: String(matData.reference || '').trim().toUpperCase(),
+      codeSerie: serial,
+      image: matData.image || doc.imageMateriel || '',
+    });
+    await newMat.save();
+
+    // Mettre à jour le futur matériel
+    doc.statut = 'Validé en matériel';
+    doc.id_MaterielCree = String(newMat._id);
+    await doc.save();
+
+    res.status(201).json({
+      message: `Futur matériel transformé avec succès en matériel "${newMat.designation}" (Réf: ${newMat.reference}).`,
+      materiel: newMat,
+      futureMateriel: doc,
+    });
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
   }
 });
 

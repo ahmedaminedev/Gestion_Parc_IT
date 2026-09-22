@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Boxes,
   Droplets,
-  Printer
+  Printer,
+  Camera,
 } from 'lucide-react';
 import { itParkService } from '../../services/itParkService';
 import { authService, AuthUser } from '../../services/authService';
@@ -29,12 +30,14 @@ import {
   Composant,
   StatutMateriel,
   CouleurImprimante,
-  COULEURS_IMPRIMANTE
+  COULEURS_IMPRIMANTE,
+  FutureMateriel
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal, ConfirmModalItem } from '../common/CustomConfirmModal';
 import { ComposantsSection } from './ComposantsSection';
 import { StocksSection } from './StocksSection';
+import { FutureMaterielsModal } from './FutureMaterielsModal';
 
 export interface MatFormComposantItem {
   id?: string;
@@ -82,6 +85,7 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
       setFactures(itParkService.getFactures());
       setEmplacements(itParkService.getEmplacements());
       setBeneficiaires(itParkService.getBeneficiaires());
+      setFutureMateriels(itParkService.getFutureMateriels());
     });
     return () => {
       unsubAuth();
@@ -90,6 +94,10 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
   }, []);
 
   const isDSIAdmin = currentUser?.role === 'Responsable IT' || currentUser?.accesApp === 'GLOBAL_BACKOFFICE';
+
+  // Future Matériels Modal State
+  const [isFutureModalOpen, setIsFutureModalOpen] = useState(false);
+  const [futureMateriels, setFutureMateriels] = useState<FutureMateriel[]>(itParkService.getFutureMateriels());
 
   // Alerts
   const [pageAlert, setPageAlert] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; message: string } | null>(null);
@@ -734,15 +742,31 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
         </div>
 
         {isDSIAdmin && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {activeTab === 'materiels' ? (
-              <button
-                onClick={handleOpenAddMat}
-                className="flex items-center gap-2 bg-[#0c1017] hover:bg-black text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Nouveau Matériel</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setIsFutureModalOpen(true)}
+                  className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+                  title="Ajouter un futur matériel via photos (matériel, fiche, facture, code-barres) avec auto-détection"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Ajouter futur matériel par images</span>
+                  {futureMateriels.filter(f => f.statut === 'En attente').length > 0 && (
+                    <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-white text-cyan-800">
+                      {futureMateriels.filter(f => f.statut === 'En attente').length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={handleOpenAddMat}
+                  className="flex items-center gap-2 bg-[#0c1017] hover:bg-black text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nouveau Matériel</span>
+                </button>
+              </>
             ) : (
               <button
                 onClick={handleOpenAddGroup}
@@ -2070,6 +2094,18 @@ export const MaterielsPage: React.FC<MaterielsPageProps> = ({ initialTab = 'mate
         cancelText={confirmModalConfig.cancelText}
         isLoading={isConfirmLoading}
         isBlocked={confirmModalConfig.isBlocked}
+      />
+
+      {/* Modal Futurs Matériels par Images & Barcode */}
+      <FutureMaterielsModal
+        isOpen={isFutureModalOpen}
+        onClose={() => setIsFutureModalOpen(false)}
+        onMaterielCreated={(newMat) => {
+          setPageAlert({
+            type: 'success',
+            message: `Le matériel "${newMat.designation}" (Code Série: ${newMat.codeSerie}) a été créé et intégré à l'inventaire avec succès !`
+          });
+        }}
       />
       </div>
     </div>
