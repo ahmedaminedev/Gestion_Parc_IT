@@ -267,13 +267,13 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker info --format \"Docker VM OSType: {{.OSType}}, Containers: {{.Containers}}\""
+                        "docker info --format {{.OSType}}"
 
                     if errorlevel 1 (
                         echo.
                         echo [ATTENTION] Le daemon Docker sur la VM ne repond pas. Tentative de redemarrage force...
-                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "powershell -Command \"Restart-Service docker -Force; Start-Sleep -Seconds 6\""
-                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "docker info --format \"Docker VM OSType: {{.OSType}}\""
+                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "powershell -Command Restart-Service docker -Force; Start-Sleep -Seconds 6"
+                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "docker info --format {{.OSType}}"
                         if errorlevel 1 (
                             echo ERREUR CRITIQUE : Le daemon Docker sur la VM reste inaccessible
                             exit /b 1
@@ -796,7 +796,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker images \"%IMAGE_NAME%\""
+                        "docker images %IMAGE_NAME%"
 
                     echo.
                     echo ===== 4. SUPPRESSION TAR SUR VM =====
