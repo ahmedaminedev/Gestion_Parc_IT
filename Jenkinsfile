@@ -335,6 +335,26 @@ pipeline {
                     )
 
                     echo.
+                    echo ===== TAILWIND OXIDE WINDOWS =====
+
+                    npm install --no-save --force @tailwindcss/oxide-win32-x64-msvc
+
+                    if errorlevel 1 (
+                        echo ERREUR : installation Tailwind Oxide echouee
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== ESBUILD WINDOWS =====
+
+                    npm install --no-save --force @esbuild/win32-x64
+
+                    if errorlevel 1 (
+                        echo ERREUR : installation Esbuild Windows echouee
+                        exit /b 1
+                    )
+
+                    echo.
                     echo ===== VERIFICATION ROLLUP =====
 
                     if exist "node_modules\\@rollup\\rollup-win32-x64-msvc" (
@@ -351,6 +371,26 @@ pipeline {
 
                     if errorlevel 1 (
                         echo ERREUR : LightningCSS Windows introuvable ou echec de chargement
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== VERIFICATION TAILWIND OXIDE =====
+
+                    node -e "try { require('@tailwindcss/oxide'); console.log('TAILWIND OXIDE WINDOWS NATIVE MODULE OK'); } catch(e) { console.error('Echec chargement native module:', e.message); process.exit(1); }"
+
+                    if errorlevel 1 (
+                        echo ERREUR : Tailwind Oxide Windows introuvable ou echec de chargement
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== VERIFICATION ESBUILD =====
+
+                    node -e "try { require('esbuild'); console.log('ESBUILD WINDOWS OK'); } catch(e) { console.error('Echec chargement esbuild:', e.message); process.exit(1); }"
+
+                    if errorlevel 1 (
+                        echo ERREUR : Esbuild Windows introuvable ou echec de chargement
                         exit /b 1
                     )
 
