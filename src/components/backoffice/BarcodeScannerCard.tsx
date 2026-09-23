@@ -52,6 +52,16 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
   const scannerInstanceRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = 'barcode-live-scanner-viewport';
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraCaptureInputRef = useRef<HTMLInputElement>(null);
+
+  // Détection smartphone / tablette ou contexte non-sécurisé HTTP
+  const isMobileOrInsecure = () => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+    const hasMedia = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+    const isInsecure = typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    return isMobile || !hasMedia || isInsecure;
+  };
 
   // Synchroniser état d'autorisation mémorisée
   useEffect(() => {
@@ -92,11 +102,20 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
    */
   const startLiveScanner = async (targetCamId?: string) => {
     setCameraError(null);
+
+    // Vérification du support mediaDevices (notamment sur smartphone accédant en HTTP)
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      if (cameraCaptureInputRef.current) {
+        cameraCaptureInputRef.current.click();
+        return;
+      }
+      setCameraError("Le scanner en direct nécessite HTTPS. Photographiez le code-barres.");
+      return;
+    }
+
     setIsLiveScanning(true);
 
     try {
-      const camId = targetCamId || (await fetchAvailableCameras());
-
       // Attendre que le conteneur DOM soit monté
       await new Promise(r => setTimeout(r, 120));
 
@@ -118,79 +137,74 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         aspectRatio: 1.777778, // 16:9
       };
 
-      // Spécification de la caméra : par ID spécifique ou facingMode
-      const cameraConfig = camId
-        ? camId
-        : { facingMode: { ideal: 'environment' } };
+      // Spécification de la caméra : par ID spécifique ou string exact 'environment' (requis par html5-qrcode)
+      const cameraConfig = targetCamId
+        ? targetCamId
+        : (selectedCameraId ? selectedCameraId : { facingMode: "environment" });
 
-      await scanner.start(
-        cameraConfig,
-        scanConfig,
-        async (decodedText, decodedResult) => {
-          // SUCCÈS DÉTECTION CODE-BARRES EN DIRECT !
-          playBarcodeBeep();
-          const cleanCode = decodedText.trim();
-          setDetectionFormat(decodedResult.result?.format?.formatName || 'Code-barres');
+      const onScanSuccess = async (decodedText: string, decodedResult: any) => {
+        // SUCCÈS DÉTECTION CODE-BARRES EN DIRECT !
+        playBarcodeBeep();
+        const cleanCode = decodedText.trim();
+        setDetectionFormat(decodedResult.result?.format?.formatName || 'Code-barres');
 
-          // Capture d'un snapshot de la caméra pour archiver l'image de la preuve
-          let snapshotDataUrl: string | undefined;
-          try {
-            const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
-            if (videoElem) {
-              const canvas = document.createElement('canvas');
-              canvas.width = videoElem.videoWidth || 640;
-              canvas.height = videoElem.videoHeight || 480;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
-                snapshotDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-              }
-            }
-          } catch {
-            // Optionnel
-          }
-
-          // Arrêt du scanner
-          await stopLiveScanner();
-
-          // Envoi au parent
-          onBarcodeChange(cleanCode, snapshotDataUrl);
-        },
-        () => {
-          // Scan continu en cours, pas d'erreur critique
-        }
-      );
-    } catch (err: any) {
-      console.warn('Erreur démarrage scanner live:', err);
-      if (err?.name === 'NotAllowedError' || String(err).includes('Permission') || err?.name === 'SecurityError') {
-        setCameraError("Autorisation caméra refusée. Cliquez sur l'icône de cadenas ou caméra dans la barre d'adresse pour autoriser l'accès, puis réessayez.");
-      } else if (err?.name === 'OverconstrainedError') {
-        let msg = "La caméra demandée n'est pas disponible. Tentative avec la webcam par défaut...";
-        // Tentative de secours automatique
+        // Capture d'un snapshot de la caméra pour archiver l'image de la preuve
+        let snapshotDataUrl: string | undefined;
         try {
-          if (scannerInstanceRef.current) {
-            await scannerInstanceRef.current.start(
-              { facingMode: 'user' },
-              { fps: 10 },
-              (text) => {
-                playBarcodeBeep();
-                stopLiveScanner();
-                onBarcodeChange(text.trim());
-              },
-              () => {}
-            );
-            return;
+          const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
+          if (videoElem) {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElem.videoWidth || 640;
+            canvas.height = videoElem.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
+              snapshotDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            }
           }
         } catch {
-          msg = "Aucune caméra compatible trouvée.";
+          // Optionnel
         }
-        setCameraError(msg);
+
+        // Arrêt du scanner
+        await stopLiveScanner();
+
+        // Envoi au parent
+        onBarcodeChange(cleanCode, snapshotDataUrl);
+      };
+
+      try {
+        await scanner.start(
+          cameraConfig,
+          scanConfig,
+          onScanSuccess,
+          () => {}
+        );
+      } catch (firstErr) {
+        console.warn('Premier essai start caméra échoué, tentative fallback standard:', firstErr);
+        // Fallback avec caméra user ou première webcam
+        await scanner.start(
+          { facingMode: "user" },
+          scanConfig,
+          onScanSuccess,
+          () => {}
+        );
+      }
+
+      // Dès que la caméra est active et autorisée, lister les caméras disponibles pour le basculement
+      fetchAvailableCameras();
+
+    } catch (err: any) {
+      console.warn('Erreur démarrage scanner live:', err);
+      await stopLiveScanner();
+
+      if (err?.name === 'NotAllowedError' || String(err).includes('Permission') || err?.name === 'SecurityError') {
+        setCameraError("Autorisation caméra refusée ou bloquée par le navigateur (requiert HTTPS). Vous pouvez photographier le code-barres avec votre téléphone :");
       } else if (err?.name === 'NotFoundError') {
         setCameraError("Aucun capteur caméra détecté sur cet appareil.");
       } else {
-        setCameraError("Impossible de démarrer le scanner caméra. Vérifiez qu'aucune autre application n'utilise la caméra.");
+        setCameraError("Impossible d'activer le flux direct de la caméra. Vous pouvez photographier le code-barres avec votre téléphone :");
       }
-      await stopLiveScanner();
     }
   };
 
@@ -217,6 +231,16 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
    */
   const handleCameraClick = () => {
     setCameraError(null);
+
+    // Sur smartphone ou en HTTP sans HTTPS (où les navigateurs bloquent getUserMedia),
+    // déclencher directement l'appareil photo natif du téléphone via capture="environment"
+    if (isMobileOrInsecure()) {
+      if (cameraCaptureInputRef.current) {
+        cameraCaptureInputRef.current.click();
+        return;
+      }
+    }
+
     if (getStoredCameraPermission()) {
       startLiveScanner();
     } else {
@@ -319,6 +343,16 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/jpg"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Input caméra caché : déclenchement direct de l'appareil photo du smartphone pour photographier le code-barres */}
+      <input
+        ref={cameraCaptureInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={handleFileChange}
       />
@@ -443,12 +477,24 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
               type="button"
               onClick={() => {
                 setCameraError(null);
+                cameraCaptureInputRef.current?.click();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-xs active:scale-97 transition-all"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Photographier le code-barres (Appareil photo)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCameraError(null);
                 startLiveScanner();
               }}
               className="flex items-center gap-1 px-2.5 py-1 bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Réessayer la caméra</span>
+              <span>Réessayer le flux</span>
             </button>
 
             <button

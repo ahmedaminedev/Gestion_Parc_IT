@@ -78,6 +78,16 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Détection smartphone / tablette ou contexte non-sécurisé HTTP
+  const isMobileOrInsecure = () => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+    const hasMedia = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+    const isInsecure = typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    return isMobile || !hasMedia || isInsecure;
+  };
 
   // Synchroniser état d'autorisation mémorisée
   useEffect(() => {
@@ -93,6 +103,16 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
 
   const handleCameraClick = () => {
     setCameraError(null);
+
+    // Sur smartphone ou en HTTP sans HTTPS (où les navigateurs bloquent getUserMedia),
+    // déclencher directement l'appareil photo natif du téléphone via capture="environment"
+    if (isMobileOrInsecure()) {
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+        return;
+      }
+    }
+
     if (getStoredCameraPermission()) {
       startCamera();
     } else {
@@ -122,7 +142,12 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
     setCameraError(null);
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError("La caméra n'est pas supportée par ce navigateur.");
+        // Déclenchement automatique de l'appareil photo natif du smartphone
+        if (cameraInputRef.current) {
+          cameraInputRef.current.click();
+          return;
+        }
+        setCameraError("La caméra en direct nécessite HTTPS. Utilisez l'appareil photo natif.");
         return;
       }
 
@@ -131,18 +156,34 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
       // 1. Tenter d'abord la caméra arrière (recommandée sur mobile/tablette)
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false
         });
       } catch {
-        // 2. Si échec (notamment sur PC de bureau ou laptop sans caméra arrière), utiliser toute webcam disponible
+        // 2. Tenter avec facingMode 'environment' simple
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: { facingMode: 'environment' },
             audio: false
           });
-        } catch (fallbackErr: any) {
-          throw fallbackErr;
+        } catch {
+          // 3. Tenter avec la caméra avant
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'user' },
+              audio: false
+            });
+          } catch {
+            // 4. Si échec (notamment sur PC de bureau ou laptop sans caméra arrière), utiliser toute webcam disponible
+            try {
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false
+              });
+            } catch (fallbackErr: any) {
+              throw fallbackErr;
+            }
+          }
         }
       }
 
@@ -153,10 +194,13 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
       streamRef.current = stream;
       setIsCameraActive(true);
 
-      // Connecter la vidéo
+      // Connecter la vidéo avec les attributs nécessaires pour mobiles / iOS Safari
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
+          videoRef.current.setAttribute('webkit-playsinline', 'true');
+          videoRef.current.muted = true;
           videoRef.current.play().catch(err => {
             console.warn("Erreur lecture vidéo:", err);
           });
@@ -167,11 +211,11 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
       setIsCameraActive(false);
 
       if (err?.name === 'NotAllowedError' || String(err).includes('Permission') || err?.name === 'SecurityError') {
-        setCameraError("Autorisation caméra refusée. Cliquez sur l'icône de cadenas ou caméra dans la barre d'adresse pour autoriser l'accès, puis réessayez.");
+        setCameraError("Autorisation caméra refusée ou restreinte par le navigateur (requiert HTTPS). Vous pouvez utiliser l'appareil photo du téléphone :");
       } else if (err?.name === 'NotFoundError') {
         setCameraError("Aucune caméra ou webcam détectée sur cet appareil.");
       } else {
-        setCameraError("Impossible d'accéder à la caméra. Vérifiez qu'aucune autre application ne l'utilise.");
+        setCameraError("Impossible d'activer le flux vidéo direct. Vous pouvez ouvrir l'appareil photo du téléphone :");
       }
     }
   };
@@ -200,6 +244,20 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
     stopCamera();
   };
 
+  // Traitement d'une photo prise avec l'appareil photo natif du téléphone
+  const handleNativeCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      onChange(base64, `camera_${isBarcode ? 'barcode' : 'photo'}_${Date.now()}.jpg`);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -226,13 +284,23 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
           ? 'bg-cyan-50/50 border-cyan-300'
           : 'bg-white border-gray-200 hover:border-gray-300'
     }`}>
-      {/* Hidden file input : strictement pour importer un fichier image */}
+      {/* Hidden file input : strictement pour importer un fichier image depuis la galerie */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/jpeg,image/png,image/webp,image/jpg"
         className="hidden"
         onChange={handleFileChange}
+      />
+
+      {/* Hidden camera input : déclenchement direct de l'appareil photo du smartphone */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleNativeCameraCapture}
       />
 
       <div className="flex items-center justify-between mb-2">
@@ -331,12 +399,23 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
               type="button"
               onClick={() => {
                 setCameraError(null);
+                cameraInputRef.current?.click();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-xs active:scale-97 transition-all"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              <span>Ouvrir l'appareil photo du téléphone</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraError(null);
                 startCamera();
               }}
               className="flex items-center gap-1 px-2.5 py-1 bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Réessayer la caméra</span>
+              <span>Réessayer le flux</span>
             </button>
             <button
               type="button"

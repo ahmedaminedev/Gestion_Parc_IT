@@ -25,6 +25,8 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<any>(null);
+  const nativePhotoInputRef = useRef<HTMLInputElement>(null);
+  const nativeVideoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -36,7 +38,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
     return () => {
       stopCamera();
     };
-  }, [isOpen, facingMode]);
+  }, [isOpen, facingMode, mode]);
 
   const startCamera = async () => {
     try {
@@ -44,20 +46,72 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
         stream.getTracks().forEach((t) => t.stop());
       }
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode },
-        audio: true,
-      });
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        // Déclenchement automatique de la capture native sur smartphone si pas de flux WebRTC
+        if (mode === 'photo') {
+          nativePhotoInputRef.current?.click();
+        } else {
+          nativeVideoInputRef.current?.click();
+        }
+        return;
+      }
+
+      let mediaStream: MediaStream | null = null;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode },
+          audio: mode === 'video',
+        });
+      } catch {
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: mode === 'video',
+          });
+        } catch (fallbackErr) {
+          throw fallbackErr;
+        }
+      }
 
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('webkit-playsinline', 'true');
+        videoRef.current.muted = true;
+        videoRef.current.play().catch(e => console.warn('Video play warning:', e));
       }
     } catch (err: any) {
-      console.error('Error starting camera:', err);
-      alert('Impossible d\'activer la caméra. Veuillez vérifier les permissions de votre navigateur.');
-      onClose();
+      console.warn('Erreur activation caméra:', err);
+      // Proposer l'appareil photo natif du smartphone
+      if (mode === 'photo') {
+        nativePhotoInputRef.current?.click();
+      } else {
+        nativeVideoInputRef.current?.click();
+      }
     }
+  };
+
+  // Gestion des fichiers capturés via appareil photo natif du smartphone
+  const handleNativePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      setCapturedPhoto(dataUrl);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleNativeVideoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setRecordedVideoUrl(url);
+    setVideoBlob(file);
+    e.target.value = '';
   };
 
   const stopCamera = () => {
@@ -183,6 +237,24 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl flex flex-col">
+        {/* Hidden inputs pour déclencher directement l'appareil photo/caméra natif du smartphone */}
+        <input
+          ref={nativePhotoInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleNativePhotoCapture}
+        />
+        <input
+          ref={nativeVideoInputRef}
+          type="file"
+          accept="video/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleNativeVideoCapture}
+        />
+
         {/* Header */}
         <div className="p-4 px-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
           <div className="flex items-center gap-3">
