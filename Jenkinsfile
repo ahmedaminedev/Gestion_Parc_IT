@@ -690,18 +690,40 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
+                    echo.
+                    echo ===== 1. CREATION DOSSIER C:\\Temp SUR LA VM =====
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Test-Path 'C:\\Temp')) { New-Item -ItemType Directory -Path 'C:\\Temp' -Force | Out-Null }; if (Test-Path 'C:\\Temp\\%DOCKER_TAR%') { Remove-Item 'C:\\Temp\\%DOCKER_TAR%' -Force -ErrorAction SilentlyContinue; Write-Output '[NETTOYAGE] Ancien fichier TAR supprime de C:\\Temp.' }; Add-MpPreference -ExclusionPath 'C:\\Temp' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath 'C:\\ProgramData\\docker' -ErrorAction SilentlyContinue; Write-Output '[OK] C:\\Temp pret et exclusions Windows Defender configurees sur la VM.'\""
+                        "if not exist C:\\Temp mkdir C:\\Temp"
 
                     if errorlevel 1 (
-                        echo ERREUR : impossible de preparer C:\\Temp sur la VM
+                        echo ERREUR : impossible de creer C:\\Temp sur la VM
                         exit /b 1
                     )
+
+                    echo.
+                    echo ===== 2. PURGE ANCIEN TAR SUR LA VM =====
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "if exist C:\\Temp\\%DOCKER_TAR% del /F /Q C:\\Temp\\%DOCKER_TAR%"
+
+                    echo.
+                    echo ===== 3. EXCLUSIONS DEFENDER SUR LA VM =====
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "powershell -NoProfile -Command Add-MpPreference -ExclusionPath C:\\Temp,C:\\ProgramData\\docker -ErrorAction SilentlyContinue"
 
                     echo PREPARATION VM OK
                 '''
@@ -767,7 +789,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker image rm %IMAGE_NAME%:%IMAGE_TAG% 2>nul || echo Aucune ancienne image a purger"
+                        "docker image rm -f %IMAGE_NAME%:%IMAGE_TAG% 2>nul || echo Aucune ancienne image a purger"
 
                     echo.
                     echo ===== 2. CHARGEMENT DE L IMAGE DOCKER NANO (MODE QUIET) =====
@@ -778,7 +800,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Write-Output '[INFO] Demarrage docker load en mode quiet (sans blocage console)...'; $sw = [System.Diagnostics.Stopwatch]::StartNew(); & docker load -q -i C:\\Temp\\%DOCKER_TAR%; if ($LASTEXITCODE -ne 0) { Write-Error 'docker load a echoue'; exit $LASTEXITCODE }; Write-Output ('[OK] Image chargee avec succes en ' + [math]::Round($sw.Elapsed.TotalSeconds, 1) + ' secondes.')\""
+                        "docker load -q -i C:\\Temp\\%DOCKER_TAR%"
 
                     if errorlevel 1 (
                         echo ERREUR : docker load a echoue sur la VM
@@ -807,7 +829,7 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "del /F /Q C:\\Temp\\%DOCKER_TAR% 2>nul || powershell -Command \"Remove-Item C:\\Temp\\%DOCKER_TAR% -Force -ErrorAction SilentlyContinue\""
+                        "if exist C:\\Temp\\%DOCKER_TAR% del /F /Q C:\\Temp\\%DOCKER_TAR%"
 
                     echo [OK] Fichier TAR temporaire supprime de la VM.
                 '''
