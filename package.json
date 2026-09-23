@@ -72,5 +72,9 @@
     "typescript": "~5.7.2",
     "vite": "^6.0.0",
     "vitest": "^2.1.8"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.28.1",
+    "lightningcss-win32-x64-msvc": "^1.32.0"
   }
 }

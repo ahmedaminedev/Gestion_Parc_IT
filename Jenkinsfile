@@ -347,10 +347,10 @@ pipeline {
                     echo.
                     echo ===== VERIFICATION LIGHTNINGCSS =====
 
-                    if exist "node_modules\\lightningcss-win32-x64-msvc" (
-                        echo LIGHTNINGCSS WINDOWS OK
-                    ) else (
-                        echo ERREUR : LightningCSS Windows introuvable
+                    node -e "try { require('lightningcss'); console.log('LIGHTNINGCSS WINDOWS NATIVE MODULE OK'); } catch(e) { console.error('Echec chargement native module:', e.message); process.exit(1); }"
+
+                    if errorlevel 1 (
+                        echo ERREUR : LightningCSS Windows introuvable ou echec de chargement
                         exit /b 1
                     )
 
