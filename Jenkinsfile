@@ -211,20 +211,20 @@ pipeline {
 
 
         // =========================================================
-        // 4. TEST SSH VM
+        // 4. TEST SSH ET DOCKER VM
         // =========================================================
 
-        stage('Test SSH VM') {
+        stage('Test SSH et Docker VM') {
 
             steps {
 
                 echo '=============================================='
-                echo 'TEST SSH VERS LA VM'
+                echo 'TEST SSH ET ETAT DOCKER SUR LA VM'
                 echo '=============================================='
 
                 bat '''
                     echo.
-                    echo ===== CONNEXION SSH =====
+                    echo ===== 1. TEST CONNEXION SSH =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -240,8 +240,58 @@ pipeline {
                         exit /b 1
                     )
 
+                    echo [OK] Connexion SSH vers la VM etablie.
+
                     echo.
-                    echo CONNEXION SSH OK
+                    echo ===== 2. VERIFICATION ET DEMARRAGE SERVICE DOCKER SUR LA VM =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$svc = Get-Service docker -ErrorAction SilentlyContinue; if ($svc) { if ($svc.Status -ne 'Running') { Write-Output '[INFO] Service Docker arrete sur la VM. Demarrage en cours...'; Start-Service docker; Start-Sleep -Seconds 5; Write-Output '[OK] Service Docker demarre.' } else { Write-Output '[OK] Service Docker en cours d execution sur la VM.' } } else { Write-Error 'Service Docker non installe sur la VM !'; exit 1 }\""
+
+                    if errorlevel 1 (
+                        echo ERREUR : Impossible d activer le service Docker sur la VM
+                        exit /b 1
+                    )
+
+                    echo.
+                    echo ===== 3. TEST DE REPONSE DU DAEMON DOCKER SUR LA VM =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "docker info --format \"Docker VM OSType: {{.OSType}}, Containers: {{.Containers}}\""
+
+                    if errorlevel 1 (
+                        echo.
+                        echo [ATTENTION] Le daemon Docker sur la VM ne repond pas. Tentative de redemarrage force...
+                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "powershell -Command \"Restart-Service docker -Force; Start-Sleep -Seconds 6\""
+                        "%SSH_EXE%" -i "%SSH_KEY%" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL "%VM_USER%@%VM_IP%" "docker info --format \"Docker VM OSType: {{.OSType}}\""
+                        if errorlevel 1 (
+                            echo ERREUR CRITIQUE : Le daemon Docker sur la VM reste inaccessible
+                            exit /b 1
+                        )
+                    )
+
+                    echo [OK] Daemon Docker sur la VM pret et reactif.
+
+                    echo.
+                    echo ===== 4. ESPACE DISQUE SUR LE SYSTEME DE LA VM =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "powershell -NoProfile -Command \"$freeGb = [math]::Round((Get-PSDrive C).Free / 1GB, 2); Write-Output ('Espace libre disque C: sur la VM = ' + $freeGb + ' Go'); if ($freeGb -lt 6) { Write-Warning 'Attention : Moins de 6 Go libres sur le disque C: de la VM !' }\""
                 '''
             }
         }
@@ -636,7 +686,7 @@ pipeline {
             steps {
 
                 echo '=============================================='
-                echo 'PREPARATION VM'
+                echo 'PREPARATION VM & NETTOYAGE ESPACE DISQUE'
                 echo '=============================================='
 
                 bat '''
@@ -646,10 +696,10 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "if not exist C:\\Temp mkdir C:\\Temp"
+                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"if (-not (Test-Path 'C:\\Temp')) { New-Item -ItemType Directory -Path 'C:\\Temp' -Force | Out-Null }; if (Test-Path 'C:\\Temp\\%DOCKER_TAR%') { Remove-Item 'C:\\Temp\\%DOCKER_TAR%' -Force -ErrorAction SilentlyContinue; Write-Output '[NETTOYAGE] Ancien fichier TAR supprime de C:\\Temp.' }; Add-MpPreference -ExclusionPath 'C:\\Temp' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath 'C:\\ProgramData\\docker' -ErrorAction SilentlyContinue; Write-Output '[OK] C:\\Temp pret et exclusions Windows Defender configurees sur la VM.'\""
 
                     if errorlevel 1 (
-                        echo ERREUR : impossible de preparer C:\\Temp
+                        echo ERREUR : impossible de preparer C:\\Temp sur la VM
                         exit /b 1
                     )
 
@@ -697,6 +747,10 @@ pipeline {
 
         stage('Docker Load VM') {
 
+            options {
+                timeout(time: 15, unit: 'MINUTES')
+            }
+
             steps {
 
                 echo '=============================================='
@@ -704,23 +758,37 @@ pipeline {
                 echo '=============================================='
 
                 bat '''
+                    echo.
+                    echo ===== 1. SUPPRESSION PREALABLE ANCIENNE IMAGE SUR LA VM =====
+
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
                         -o IdentitiesOnly=yes ^
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "docker load -i C:\\Temp\\%DOCKER_TAR%"
+                        "docker image rm %IMAGE_NAME%:%IMAGE_TAG% 2>nul || echo Aucune ancienne image a purger"
+
+                    echo.
+                    echo ===== 2. CHARGEMENT DE L IMAGE DOCKER NANO (MODE QUIET) =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Write-Output '[INFO] Demarrage docker load en mode quiet (sans blocage console)...'; $sw = [System.Diagnostics.Stopwatch]::StartNew(); & docker load -q -i C:\\Temp\\%DOCKER_TAR%; if ($LASTEXITCODE -ne 0) { Write-Error 'docker load a echoue'; exit $LASTEXITCODE }; Write-Output ('[OK] Image chargee avec succes en ' + [math]::Round($sw.Elapsed.TotalSeconds, 1) + ' secondes.')\""
 
                     if errorlevel 1 (
-                        echo ERREUR : docker load a echoue
+                        echo ERREUR : docker load a echoue sur la VM
                         exit /b 1
                     )
 
                     echo DOCKER LOAD OK
 
                     echo.
-                    echo ===== SUPPRESSION TAR SUR VM =====
+                    echo ===== 3. VERIFICATION DE L IMAGE SUR LA VM =====
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^
@@ -728,7 +796,20 @@ pipeline {
                         -o StrictHostKeyChecking=no ^
                         -o UserKnownHostsFile=NUL ^
                         "%VM_USER%@%VM_IP%" ^
-                        "del /F /Q C:\\Temp\\%DOCKER_TAR%"
+                        "docker images \"%IMAGE_NAME%\""
+
+                    echo.
+                    echo ===== 4. SUPPRESSION TAR SUR VM =====
+
+                    "%SSH_EXE%" ^
+                        -i "%SSH_KEY%" ^
+                        -o IdentitiesOnly=yes ^
+                        -o StrictHostKeyChecking=no ^
+                        -o UserKnownHostsFile=NUL ^
+                        "%VM_USER%@%VM_IP%" ^
+                        "del /F /Q C:\\Temp\\%DOCKER_TAR% 2>nul || powershell -Command \"Remove-Item C:\\Temp\\%DOCKER_TAR% -Force -ErrorAction SilentlyContinue\""
+
+                    echo [OK] Fichier TAR temporaire supprime de la VM.
                 '''
             }
         }
@@ -1025,14 +1106,22 @@ Points a verifier :
         always {
 
             echo '=============================================='
-            echo 'NETTOYAGE FICHIER TAR'
+            echo 'NETTOYAGE FICHIER TAR (JENKINS & VM)'
             echo '=============================================='
 
             bat '''
                 if exist "%DOCKER_TAR%" (
                     del /F /Q "%DOCKER_TAR%"
-                    echo FICHIER TAR SUPPRIME
+                    echo [OK] FICHIER TAR SUPPRIME SUR JENKINS
                 )
+
+                "%SSH_EXE%" ^
+                    -i "%SSH_KEY%" ^
+                    -o IdentitiesOnly=yes ^
+                    -o StrictHostKeyChecking=no ^
+                    -o UserKnownHostsFile=NUL ^
+                    "%VM_USER%@%VM_IP%" ^
+                    "if exist C:\\Temp\\%DOCKER_TAR% del /F /Q C:\\Temp\\%DOCKER_TAR%" 2>nul || echo [OK] Nettoyage TAR sur VM verifie.
             '''
         }
     }

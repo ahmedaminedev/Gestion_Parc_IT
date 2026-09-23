@@ -28,6 +28,8 @@ __tests__
 
 # Fichiers temporaires et logs
 *.log
+*.tar
+*.zip
 tmp
 temp
 .cache
