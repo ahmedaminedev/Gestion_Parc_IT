@@ -793,6 +793,8 @@ pipeline {
 
                     echo.
                     echo ===== 2. CHARGEMENT DE L IMAGE DOCKER NANO (MODE QUIET) =====
+                    echo [INFO] Decompression des couches de l image (1.08 Go) en cours sur la VM...
+                    echo [INFO] Cette etape prend environ 2 a 4 minutes sur le disque NTFS. Ne pas interrompre le job.
 
                     "%SSH_EXE%" ^
                         -i "%SSH_KEY%" ^

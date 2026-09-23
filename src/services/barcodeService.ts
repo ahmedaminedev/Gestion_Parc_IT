@@ -1,38 +1,103 @@
 /**
  * Service de décodage et scanning de code-barres 100% local, sécurisé et ultra-performant.
- * Conçu pour fonctionner sur serveur local d'entreprise (intranet sans dépendance cloud externe).
+ * Basé sur le moteur standard industriel ZXing (@zxing/library) combiné avec
+ * l'accélération matérielle BarcodeDetector (quand disponible).
  *
  * Supporte : Code-128, Code-39, Code-93, EAN-13, EAN-8, QR Code, UPC-A, UPC-E, ITF, Codabar, Data Matrix.
  * Optimisé spécifiquement pour :
- * - Les codes-barres hachurés, usés, rayés ou partiellement endommagés (filtre morphologique vertical).
- * - Les faibles contrastes et reflets d'éclairage (égalisation d'histogramme & binarisation dynamique Otsu).
- * - Le flou de mise au point smartphone (masque de netteté convolutif Unsharp Mask).
- * - Les orientations variées (rotations 0°, 90°, 270°).
+ * - Détection ultra-rapide sur flux vidéo en direct (1D et 2D, plein écran et zone de visée)
+ * - Traitement des codes dégradés, rayés, hachurés ou faiblement contrastés (filtres morphologiques)
+ * - Décodage de photos prises par smartphone à toute orientation (0°, 90°, 270°)
+ * - Fonctionnement hors-ligne et intranet sans aucune requête cloud externe.
  */
 
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import {
+  MultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+  RGBLuminanceSource,
+  BinaryBitmap,
+  HybridBinarizer,
+} from '@zxing/library';
 
 export interface BarcodeDetectionResult {
   text: string;
   format?: string;
 }
 
-// Formats de codes-barres matériel et inventaire IT
-export const SUPPORTED_BARCODE_FORMATS: Html5QrcodeSupportedFormats[] = [
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.QR_CODE,
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.DATA_MATRIX,
-  Html5QrcodeSupportedFormats.ITF,
-  Html5QrcodeSupportedFormats.CODABAR,
+// Formats supportés pour l'inventaire et les équipements informatiques
+export const SUPPORTED_BARCODE_FORMATS: BarcodeFormat[] = [
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODE_93,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+  BarcodeFormat.DATA_MATRIX,
+  BarcodeFormat.ITF,
+  BarcodeFormat.CODABAR,
 ];
 
-// Formats pour l'API BarcodeDetector native (noms normalisés W3C / Blink)
+// Configuration standard des indices de décodage ZXing
+export function getStandardZXingHints(): Map<DecodeHintType, any> {
+  const hints = new Map<DecodeHintType, any>();
+  hints.set(DecodeHintType.TRY_HARDER, true);
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, SUPPORTED_BARCODE_FORMATS);
+  return hints;
+}
+
+/**
+ * Instance globale réutilisable du lecteur multi-format ZXing
+ */
+let cachedZXingReader: MultiFormatReader | null = null;
+export function getZXingReader(): MultiFormatReader {
+  if (!cachedZXingReader) {
+    cachedZXingReader = new MultiFormatReader();
+    cachedZXingReader.setHints(getStandardZXingHints());
+  }
+  return cachedZXingReader;
+}
+
+/**
+ * Noms conviviaux pour les formats de code-barres
+ */
+export function formatBarcodeFormatName(format: BarcodeFormat | string): string {
+  if (typeof format === 'number') {
+    switch (format) {
+      case BarcodeFormat.CODE_128:
+        return 'Code 128';
+      case BarcodeFormat.CODE_39:
+        return 'Code 39';
+      case BarcodeFormat.CODE_93:
+        return 'Code 93';
+      case BarcodeFormat.EAN_13:
+        return 'EAN-13';
+      case BarcodeFormat.EAN_8:
+        return 'EAN-8';
+      case BarcodeFormat.QR_CODE:
+        return 'QR Code';
+      case BarcodeFormat.UPC_A:
+        return 'UPC-A';
+      case BarcodeFormat.UPC_E:
+        return 'UPC-E';
+      case BarcodeFormat.DATA_MATRIX:
+        return 'Data Matrix';
+      case BarcodeFormat.ITF:
+        return 'ITF';
+      case BarcodeFormat.CODABAR:
+        return 'Codabar';
+      default:
+        return 'Code-barres';
+    }
+  }
+  return String(format || 'Code-barres');
+}
+
+/**
+ * Formats pour l'API BarcodeDetector native (W3C)
+ */
 const NATIVE_BARCODE_FORMATS = [
   'code_128',
   'code_39',
@@ -71,7 +136,7 @@ export function isNativeBarcodeDetectorSupported(): boolean {
 }
 
 /**
- * Instance réutilisable du BarcodeDetector natif pour des performances maximales
+ * Instance réutilisable du BarcodeDetector natif
  */
 let cachedNativeDetector: any = null;
 export function getNativeBarcodeDetector(): any {
@@ -93,7 +158,7 @@ export function getNativeBarcodeDetector(): any {
 }
 
 /**
- * Tente de décoder un code-barres depuis un élément Image, Canvas ou ImageBitmap via BarcodeDetector
+ * Tente de décoder un code-barres via BarcodeDetector natif hardware
  */
 export async function detectViaNativeBarcodeDetector(
   imageSource: ImageBitmap | HTMLCanvasElement | HTMLVideoElement
@@ -114,20 +179,59 @@ export async function detectViaNativeBarcodeDetector(
         }
       }
     }
-  } catch (err) {
-    // Ignorer les erreurs de détection sur frame partielle
+  } catch {
+    // Ignorer les erreurs d'analyse de frame
+  }
+  return null;
+}
+
+/**
+ * Décode un canvas via le moteur ZXing haute précision
+ */
+export function decodeCanvasWithZXing(canvas: HTMLCanvasElement): BarcodeDetectionResult | null {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx || canvas.width === 0 || canvas.height === 0) return null;
+
+  try {
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const len = imgData.width * imgData.height;
+    const luminances = new Uint8ClampedArray(len);
+    const d = imgData.data;
+
+    for (let i = 0; i < len; i++) {
+      const offset = i * 4;
+      luminances[i] = (d[offset] * 77 + d[offset + 1] * 150 + d[offset + 2] * 29) >> 8;
+    }
+
+    const lumSource = new RGBLuminanceSource(luminances, imgData.width, imgData.height);
+    const binaryBitmap = new BinaryBitmap(new HybridBinarizer(lumSource));
+
+    const reader = getZXingReader();
+    const result = reader.decode(binaryBitmap);
+
+    if (result && result.getText()) {
+      const text = result.getText().trim();
+      if (text.length > 0) {
+        return {
+          text,
+          format: formatBarcodeFormatName(result.getBarcodeFormat()),
+        };
+      }
+    }
+  } catch {
+    // NotFoundException, FormatException, ChecksumException
   }
   return null;
 }
 
 /**
  * DÉCODAGE EN TEMPS RÉEL SUR LE FLUX VIDÉO
- * Exécuté à haute cadence (30 FPS) directement sur le cadre de visée
+ * Exécuté de manière optimisée sur le flux vidéo de la caméra
  */
 export async function detectBarcodeRealtime(
   video: HTMLVideoElement,
   frameCanvas: HTMLCanvasElement,
-  cropRatio = { x: 0.08, y: 0.25, width: 0.84, height: 0.5 }
+  cropRatio = { x: 0.05, y: 0.15, width: 0.90, height: 0.70 }
 ): Promise<BarcodeDetectionResult | null> {
   if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
     return null;
@@ -136,32 +240,58 @@ export async function detectBarcodeRealtime(
   const vw = video.videoWidth;
   const vh = video.videoHeight;
 
-  // Calculer la zone correspondant au cadre de visée
+  // 1. D'abord tester avec le détecteur matériel natif si disponible sur la vidéo directe
+  if (isNativeBarcodeDetectorSupported()) {
+    try {
+      const nativeFast = await detectViaNativeBarcodeDetector(video);
+      if (nativeFast) return nativeFast;
+    } catch {
+      // Poursuivre
+    }
+  }
+
+  // 2. Préparation du canvas de recadrage ciblé (Zone de visée)
   const cropX = Math.floor(vw * cropRatio.x);
   const cropY = Math.floor(vh * cropRatio.y);
-  const cropW = Math.floor(vw * cropRatio.width);
-  const cropH = Math.floor(vh * cropRatio.height);
-
-  if (cropW <= 20 || cropH <= 20) return null;
+  const cropW = Math.max(40, Math.floor(vw * cropRatio.width));
+  const cropH = Math.max(40, Math.floor(vh * cropRatio.height));
 
   frameCanvas.width = cropW;
   frameCanvas.height = cropH;
   const ctx = frameCanvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
 
-  // 1. Dessiner le cadre recadré dans le canvas
   ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
-  // 2. Tenter la détection native ultra-rapide sur la zone cadrée brute
-  const nativeResult = await detectViaNativeBarcodeDetector(frameCanvas);
-  if (nativeResult) return nativeResult;
+  // 3. Décodage ZXing sur la zone de visée cadrée
+  const zxingCropResult = decodeCanvasWithZXing(frameCanvas);
+  if (zxingCropResult) {
+    return zxingCropResult;
+  }
 
-  // 3. Si non détecté, appliquer le filtre de contraste + réparation de code-barres hachuré
+  // 4. Si non trouvé dans le cadre, tester sur l'image globale (redimensionnée pour rapidité)
+  // Cela permet de capter instantanément le code même si l'utilisateur ne l'a pas centré parfaitement
   try {
-    const imgData = ctx.getImageData(0, 0, cropW, cropH);
+    const scale = Math.min(1, 800 / Math.max(vw, vh));
+    const fullW = Math.round(vw * scale);
+    const fullH = Math.round(vh * scale);
+    frameCanvas.width = fullW;
+    frameCanvas.height = fullH;
+    ctx.drawImage(video, 0, 0, vw, vh, 0, 0, fullW, fullH);
+
+    const zxingFullResult = decodeCanvasWithZXing(frameCanvas);
+    if (zxingFullResult) {
+      return zxingFullResult;
+    }
+  } catch {
+    // Ignorer
+  }
+
+  // 5. Passe d'amélioration de contraste pour codes sombres ou hachurés
+  try {
+    const imgData = ctx.getImageData(0, 0, frameCanvas.width, frameCanvas.height);
     const d = imgData.data;
 
-    // Étape A: Niveaux de gris + augmentation dynamique de contraste
     let minLum = 255;
     let maxLum = 0;
     for (let i = 0; i < d.length; i += 4) {
@@ -173,57 +303,31 @@ export async function detectBarcodeRealtime(
     const range = maxLum - minLum || 1;
     for (let i = 0; i < d.length; i += 4) {
       const lum = (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
-      // Étirement de contraste (les barres deviennent très noires, le fond très blanc)
       const stretched = Math.min(255, Math.max(0, Math.floor(((lum - minLum) / range) * 255)));
-      // Binarisation avec léger renforcement
-      const val = stretched < 128 ? Math.max(0, stretched - 35) : Math.min(255, stretched + 35);
+      const val = stretched < 125 ? 0 : 255;
       d[i] = val;
       d[i + 1] = val;
       d[i + 2] = val;
     }
 
-    // Étape B: Fermeture morphologique verticale pour réparer les barres hachurées / rayées
-    // Pour chaque colonne, si un pixel blanc est entouré de pixels noirs au-dessus et en-dessous, on relie la barre
-    const rowBytes = cropW * 4;
-    for (let y = 1; y < cropH - 1; y++) {
-      const rowOffset = y * rowBytes;
-      const prevRow = (y - 1) * rowBytes;
-      const nextRow = (y + 1) * rowBytes;
-      for (let x = 0; x < cropW; x++) {
-        const idx = rowOffset + x * 4;
-        // Si le pixel actuel est clair mais entouré de sombre en haut et en bas -> rayure horizontale sur barre verticale
-        if (d[idx] > 100) {
-          const topDark = d[prevRow + x * 4] < 80;
-          const bottomDark = d[nextRow + x * 4] < 80;
-          if (topDark && bottomDark) {
-            d[idx] = 0;
-            d[idx + 1] = 0;
-            d[idx + 2] = 0;
-          }
-        }
-      }
-    }
-
     ctx.putImageData(imgData, 0, 0);
 
-    // Re-tenter la détection sur l'image filtrée
-    const enhancedNative = await detectViaNativeBarcodeDetector(frameCanvas);
-    if (enhancedNative) {
+    const enhancedResult = decodeCanvasWithZXing(frameCanvas);
+    if (enhancedResult) {
       return {
-        text: enhancedNative.text,
-        format: `${enhancedNative.format} (Haute Précision)`,
+        text: enhancedResult.text,
+        format: `${enhancedResult.format} (Haute Précision)`,
       };
     }
   } catch {
-    // Ignorer pour ne pas ralentir le cycle de scan
+    // Ignorer
   }
 
   return null;
 }
 
 /**
- * DÉCODAGE MULTI-PAS POUR FICHIERS / PHOTOS (Exhaustif & Anti-Hachures)
- * Tente 6 passes successives avec filtres avancés pour décoder même les codes les plus dégradés
+ * DÉCODAGE MULTI-PASSES POUR FICHIERS / PHOTOS (Exhaustif & Anti-Hachures)
  */
 export async function decodeBarcodeFromImage(
   imageSource: File | Blob | string
@@ -247,126 +351,104 @@ export async function decodeBarcodeFromImage(
       const bitmap = await createImageBitmap(file);
       const res = await detectViaNativeBarcodeDetector(bitmap);
       if (res) return res;
-    } catch (err) {
-      console.warn('[BarcodeService] Passe 1 native échouée:', err);
+    } catch {
+      // Poursuivre
     }
   }
 
-  // Préparation de l'instance Html5Qrcode locale
-  const tempElementId = `barcode-scanner-temp-${Date.now()}`;
-  let tempDiv: HTMLDivElement | null = null;
-  let html5QrCode: Html5Qrcode | null = null;
-
+  // PASSE 2 : Décodage ZXing direct depuis un élément Image
   try {
-    tempDiv = document.createElement('div');
-    tempDiv.id = tempElementId;
-    tempDiv.style.display = 'none';
-    document.body.appendChild(tempDiv);
+    const directRes = await decodeImageElementWithZXing(file);
+    if (directRes) return directRes;
+  } catch {
+    // Poursuivre
+  }
 
-    html5QrCode = new Html5Qrcode(tempElementId, {
-      formatsToSupport: SUPPORTED_BARCODE_FORMATS,
-      verbose: false,
-    });
-
-    // PASSE 2 : Html5Qrcode direct
-    try {
-      const decodedText = await html5QrCode.scanFile(file, false);
-      if (decodedText && decodedText.trim()) {
-        return {
-          text: decodedText.trim(),
-          format: 'Code-barres détecté',
-        };
-      }
-    } catch {
-      // Poursuivre vers les passes d'amélioration
-    }
-
-    // PASSE 3 : Amélioration de netteté + contraste dynamique (Unsharp Mask)
-    try {
-      const sharpenedFile = await createEnhancedBarcodeFile(file, 'sharpen');
-      if (sharpenedFile) {
-        if (isNativeBarcodeDetectorSupported()) {
-          const bmp = await createImageBitmap(sharpenedFile);
-          const nativeRes = await detectViaNativeBarcodeDetector(bmp);
-          if (nativeRes) return nativeRes;
-        }
-        const text = await html5QrCode.scanFile(sharpenedFile, false);
-        if (text && text.trim()) {
-          return { text: text.trim(), format: 'Code-barres (Netteté optimisée)' };
-        }
-      }
-    } catch {
-      // Suivant
-    }
-
-    // PASSE 4 : Réparation spécifique code-barres hachuré / rayé (Fermeture morphologique + binarisation Otsu)
-    try {
-      const repairedFile = await createEnhancedBarcodeFile(file, 'repair_scratches');
-      if (repairedFile) {
-        if (isNativeBarcodeDetectorSupported()) {
-          const bmp = await createImageBitmap(repairedFile);
-          const nativeRes = await detectViaNativeBarcodeDetector(bmp);
-          if (nativeRes) return nativeRes;
-        }
-        const text = await html5QrCode.scanFile(repairedFile, false);
-        if (text && text.trim()) {
-          return { text: text.trim(), format: 'Code-barres (Barres restaurées)' };
-        }
-      }
-    } catch {
-      // Suivant
-    }
-
-    // PASSE 5 : Rotation 90° (Codes-barres verticaux ou photo smartphone inclinée)
-    try {
-      const rotatedFile = await createEnhancedBarcodeFile(file, 'rotate_90');
-      if (rotatedFile) {
-        if (isNativeBarcodeDetectorSupported()) {
-          const bmp = await createImageBitmap(rotatedFile);
-          const nativeRes = await detectViaNativeBarcodeDetector(bmp);
-          if (nativeRes) return nativeRes;
-        }
-        const text = await html5QrCode.scanFile(rotatedFile, false);
-        if (text && text.trim()) {
-          return { text: text.trim(), format: 'Code-barres (Orientation 90°)' };
-        }
-      }
-    } catch {
-      // Suivant
-    }
-
-    // PASSE 6 : Rotation 270°
-    try {
-      const rotatedFile270 = await createEnhancedBarcodeFile(file, 'rotate_270');
-      if (rotatedFile270) {
-        if (isNativeBarcodeDetectorSupported()) {
-          const bmp = await createImageBitmap(rotatedFile270);
-          const nativeRes = await detectViaNativeBarcodeDetector(bmp);
-          if (nativeRes) return nativeRes;
-        }
-        const text = await html5QrCode.scanFile(rotatedFile270, false);
-        if (text && text.trim()) {
-          return { text: text.trim(), format: 'Code-barres (Orientation 270°)' };
-        }
-      }
-    } catch {
-      // Échec complet de détection
-    }
-
-  } finally {
-    if (html5QrCode) {
-      try {
-        html5QrCode.clear();
-      } catch {
-        // Ignorer
+  // PASSE 3 : Amélioration de netteté + contraste dynamique (Unsharp Mask)
+  try {
+    const sharpenedFile = await createEnhancedBarcodeFile(file, 'sharpen');
+    if (sharpenedFile) {
+      const sharpRes = await decodeImageElementWithZXing(sharpenedFile);
+      if (sharpRes) {
+        return { text: sharpRes.text, format: `${sharpRes.format} (Netteté optimisée)` };
       }
     }
-    if (tempDiv && tempDiv.parentNode) {
-      tempDiv.parentNode.removeChild(tempDiv);
+  } catch {
+    // Poursuivre
+  }
+
+  // PASSE 4 : Réparation spécifique code-barres hachuré / rayé
+  try {
+    const repairedFile = await createEnhancedBarcodeFile(file, 'repair_scratches');
+    if (repairedFile) {
+      const repRes = await decodeImageElementWithZXing(repairedFile);
+      if (repRes) {
+        return { text: repRes.text, format: `${repRes.format} (Barres restaurées)` };
+      }
     }
+  } catch {
+    // Poursuivre
+  }
+
+  // PASSE 5 : Rotation 90° (Pour codes verticaux ou photos inclinées)
+  try {
+    const rotated90 = await createEnhancedBarcodeFile(file, 'rotate_90');
+    if (rotated90) {
+      const rotRes = await decodeImageElementWithZXing(rotated90);
+      if (rotRes) {
+        return { text: rotRes.text, format: `${rotRes.format} (Orientation 90°)` };
+      }
+    }
+  } catch {
+    // Poursuivre
+  }
+
+  // PASSE 6 : Rotation 270°
+  try {
+    const rotated270 = await createEnhancedBarcodeFile(file, 'rotate_270');
+    if (rotated270) {
+      const rotRes = await decodeImageElementWithZXing(rotated270);
+      if (rotRes) {
+        return { text: rotRes.text, format: `${rotRes.format} (Orientation 270°)` };
+      }
+    }
+  } catch {
+    // Échec de détection
   }
 
   return null;
+}
+
+/**
+ * Décode un fichier image via ZXing BrowserMultiFormatReader
+ */
+async function decodeImageElementWithZXing(file: File): Promise<BarcodeDetectionResult | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(null);
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      const res = decodeCanvasWithZXing(canvas);
+      resolve(res);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    img.src = url;
+  });
 }
 
 type EnhancementMode = 'sharpen' | 'repair_scratches' | 'rotate_90' | 'rotate_270';
@@ -386,7 +468,6 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
       let w = img.width;
       let h = img.height;
 
-      // Dimension cible optimale pour codes-barres 1D denses
       const maxDim = 1600;
       if (w > maxDim || h > maxDim) {
         if (w > h) {
@@ -409,7 +490,6 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(null);
 
-      // Gestion des rotations
       if (mode === 'rotate_90') {
         ctx.translate(h, 0);
         ctx.rotate(Math.PI / 2);
@@ -427,7 +507,6 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
       const imgData = ctx.getImageData(0, 0, actualW, actualH);
       const d = imgData.data;
 
-      // Conversion en niveaux de gris + étirement de dynamique
       let minLum = 255;
       let maxLum = 0;
       const gray = new Uint8Array(actualW * actualH);
@@ -442,8 +521,6 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
       const lumRange = maxLum - minLum || 1;
 
       if (mode === 'sharpen') {
-        // Filtre Laplacien de netteté 3x3 pour durcir les contours des barres
-        // Kernel: [0, -1, 0, -1, 5, -1, 0, -1, 0]
         for (let y = 1; y < actualH - 1; y++) {
           const row = y * actualW;
           const prevRow = (y - 1) * actualW;
@@ -457,7 +534,6 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
             const right = gray[row + x + 1];
 
             let sharp = 5 * center - (up + down + left + right);
-            // Rehaussement de contraste
             sharp = Math.floor(((sharp - minLum) / lumRange) * 255);
             sharp = sharp < 120 ? Math.max(0, sharp - 40) : Math.min(255, sharp + 40);
 
@@ -468,21 +544,17 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
           }
         }
       } else if (mode === 'repair_scratches') {
-        // Algorithme de reconstruction pour code-barres hachuré :
-        // Fermeture morphologique verticale 5-pixels pour reconnecter les barres traversées par une rayure
         const binarized = new Uint8Array(actualW * actualH);
-        const threshold = minLum + lumRange * 0.45; // Seuil adapté à la dominante de barres noires
+        const threshold = minLum + lumRange * 0.45;
 
         for (let i = 0; i < gray.length; i++) {
           binarized[i] = gray[i] < threshold ? 0 : 255;
         }
 
-        // Fermeture verticale (Dilation -> Erosion le long des barres verticales)
         for (let y = 2; y < actualH - 2; y++) {
           const row = y * actualW;
           for (let x = 0; x < actualW; x++) {
             const idx = (row + x) * 4;
-            // Si pixel est blanc, mais au-dessus et en-dessous il y a du noir -> combler la rayure
             let val = binarized[row + x];
             if (val === 255) {
               const top1 = binarized[(y - 1) * actualW + x] === 0;
@@ -491,7 +563,7 @@ async function createEnhancedBarcodeFile(file: File, mode: EnhancementMode): Pro
               const bot2 = binarized[(y + 2) * actualW + x] === 0;
 
               if ((top1 || top2) && (bot1 || bot2)) {
-                val = 0; // Combler la coupure de la barre noire
+                val = 0;
               }
             }
 
@@ -535,7 +607,7 @@ export function playBarcodeBeep() {
       const gain = ctx.createGain();
 
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(1950, ctx.currentTime); // Fréquence percutante douchette
+      osc.frequency.setValueAtTime(1950, ctx.currentTime);
       gain.gain.setValueAtTime(0.18, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
 
