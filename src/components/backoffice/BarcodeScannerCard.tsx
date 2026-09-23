@@ -8,12 +8,14 @@ import {
   RefreshCw,
   Maximize2,
   Trash2,
-  SwitchCamera
+  SwitchCamera,
+  Zap
 } from 'lucide-react';
 import { Html5Qrcode, Html5QrcodeCameraScanConfig } from 'html5-qrcode';
 import {
   SUPPORTED_BARCODE_FORMATS,
   decodeBarcodeFromImage,
+  detectBarcodeRealtime,
   playBarcodeBeep
 } from '../../services/barcodeService';
 import {
@@ -49,18 +51,22 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
   const [manualCodeInput, setManualCodeInput] = useState('');
   const [hasPermanentPermission, setHasPermanentPermission] = useState(() => getStoredCameraPermission());
 
+  // Contrôles spécifiques au cadre de visée de code-barres
+  const [torchOn, setTorchOn] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [scanSucceeded, setScanSucceeded] = useState(false);
+
   const scannerInstanceRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = 'barcode-live-scanner-viewport';
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraCaptureInputRef = useRef<HTMLInputElement>(null);
+  const frameCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animFrameIdRef = useRef<number | null>(null);
+  const isScanningRef = useRef<boolean>(false);
 
-  // Détection smartphone / tablette ou contexte non-sécurisé HTTP
-  const isMobileOrInsecure = () => {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
-    const hasMedia = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
-    const isInsecure = typeof window !== 'undefined' && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-    return isMobile || !hasMedia || isInsecure;
+  // Vérification de la disponibilité du flux média
+  const hasGetUserMedia = () => {
+    return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
   };
 
   // Synchroniser état d'autorisation mémorisée
@@ -68,150 +74,234 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
     setHasPermanentPermission(getStoredCameraPermission());
   }, [isLiveScanning, showPermissionPrompt]);
 
-  // Nettoyage de la caméra en cas de démontage
+  // Initialisation du canvas d'analyse temps réel
+  useEffect(() => {
+    if (!frameCanvasRef.current) {
+      frameCanvasRef.current = document.createElement('canvas');
+    }
+  }, []);
+
+  // Nettoyage complet au démontage
   useEffect(() => {
     return () => {
       stopLiveScanner();
     };
   }, []);
 
-  // Lister les caméras disponibles quand l'utilisateur veut scanner
+  // Lister les caméras disponibles
   const fetchAvailableCameras = async () => {
     try {
       const devices = await Html5Qrcode.getCameras();
       if (devices && devices.length > 0) {
         setCameras(devices);
-        // Préférer la caméra arrière (back/environment) sur smartphone
         const backCam = devices.find(
           d => d.label.toLowerCase().includes('back') ||
                d.label.toLowerCase().includes('rear') ||
                d.label.toLowerCase().includes('arrière') ||
                d.label.toLowerCase().includes('environment')
         );
-        setSelectedCameraId(backCam ? backCam.id : devices[0].id);
-        return backCam ? backCam.id : devices[0].id;
+        const chosenId = backCam ? backCam.id : devices[0].id;
+        setSelectedCameraId(chosenId);
+        return chosenId;
       }
     } catch (err) {
-      console.warn('Erreur énumération caméras:', err);
+      console.warn('[BarcodeScannerCard] Énumération caméras non disponible:', err);
     }
     return null;
   };
 
   /**
-   * Démarrer le scanner vidéo en direct spécifique au code-barres
+   * Succès de détection commun (déclenché par le moteur temps réel ou Html5Qrcode)
+   */
+  const handleScanSuccess = async (decodedText: string, formatName?: string) => {
+    if (!isScanningRef.current) return;
+    isScanningRef.current = false;
+
+    if (animFrameIdRef.current) {
+      cancelAnimationFrame(animFrameIdRef.current);
+      animFrameIdRef.current = null;
+    }
+
+    setScanSucceeded(true);
+    playBarcodeBeep();
+
+    const cleanCode = decodedText.trim();
+    setDetectionFormat(formatName || 'Code-barres détecté');
+
+    // Capture d'un snapshot haute qualité pour la preuve du matériel
+    let snapshotDataUrl: string | undefined;
+    try {
+      const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
+      if (videoElem && videoElem.videoWidth > 0) {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElem.videoWidth;
+        canvas.height = videoElem.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
+          snapshotDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+        }
+      }
+    } catch {
+      // Snapshot optionnel
+    }
+
+    // Animation de confirmation verte de 200ms dans le cadre
+    setTimeout(async () => {
+      await stopLiveScanner();
+      setScanSucceeded(false);
+      onBarcodeChange(cleanCode, snapshotDataUrl);
+    }, 220);
+  };
+
+  /**
+   * Boucle d'analyse temps réel 30 FPS sur la zone du cadre de visée
+   * (Capte instantanément les codes hachurés, inclinés ou rayés grâce aux filtres morphologiques)
+   */
+  const startRealtimeFrameWorker = () => {
+    let lastCheck = 0;
+    const loop = (timestamp: number) => {
+      if (!isScanningRef.current) return;
+
+      // Traitement cadencé toutes les 60ms pour un équilibre parfait fluidité / batterie
+      if (timestamp - lastCheck > 60) {
+        lastCheck = timestamp;
+        const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
+        if (videoElem && videoElem.readyState >= 2 && videoElem.videoWidth > 0 && frameCanvasRef.current) {
+          detectBarcodeRealtime(videoElem, frameCanvasRef.current)
+            .then((res) => {
+              if (res && res.text && isScanningRef.current) {
+                handleScanSuccess(res.text, res.format);
+              }
+            })
+            .catch(() => {
+              // Continuer la boucle sans interruption
+            });
+        }
+      }
+
+      if (isScanningRef.current) {
+        animFrameIdRef.current = requestAnimationFrame(loop);
+      }
+    };
+
+    animFrameIdRef.current = requestAnimationFrame(loop);
+  };
+
+  /**
+   * Démarrer le scanner vidéo direct dans le cadre de visée
    */
   const startLiveScanner = async (targetCamId?: string) => {
     setCameraError(null);
+    setScanSucceeded(false);
+    setTorchOn(false);
+    setZoomLevel(1);
 
-    // Vérification du support mediaDevices (notamment sur smartphone accédant en HTTP)
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    if (!hasGetUserMedia()) {
+      // Si le navigateur ne dispose pas de getUserMedia (ex: contexte HTTP strict)
       if (cameraCaptureInputRef.current) {
         cameraCaptureInputRef.current.click();
         return;
       }
-      setCameraError("Le scanner en direct nécessite HTTPS. Photographiez le code-barres.");
+      setCameraError("Le scanner direct nécessite un contexte sécurisé (HTTPS). Vous pouvez photographier le code-barres.");
       return;
     }
 
     setIsLiveScanning(true);
+    isScanningRef.current = true;
 
     try {
-      // Attendre que le conteneur DOM soit monté
-      await new Promise(r => setTimeout(r, 120));
+      // Attendre que le conteneur soit dans le DOM
+      await new Promise(r => setTimeout(r, 100));
 
       const scanner = new Html5Qrcode(scannerContainerId, {
         formatsToSupport: SUPPORTED_BARCODE_FORMATS,
         verbose: false,
+        useBarCodeDetectorIfSupported: true,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        } as any,
       });
       scannerInstanceRef.current = scanner;
 
+      // Configuration du scan axée sur la performance
       const scanConfig: Html5QrcodeCameraScanConfig = {
-        fps: 15,
+        fps: 25,
         qrbox: (viewfinderWidth, viewfinderHeight) => {
-          // Zone de cadrage rectangulaire optimale pour les codes-barres 1D et 2D
-          const minDim = Math.min(viewfinderWidth, viewfinderHeight);
-          const width = Math.floor(minDim * 0.85);
-          const height = Math.floor(minDim * 0.45);
-          return { width: Math.max(width, 240), height: Math.max(height, 120) };
+          // Cadre rectangulaire dédié aux codes-barres 1D et 2D (ratio ~ 2.5:1)
+          const width = Math.min(Math.floor(viewfinderWidth * 0.88), 340);
+          const height = Math.min(Math.floor(viewfinderHeight * 0.46), 140);
+          return { width: Math.max(width, 220), height: Math.max(height, 90) };
         },
-        aspectRatio: 1.777778, // 16:9
+        aspectRatio: 1.777778,
       };
 
-      // Spécification de la caméra : par ID spécifique ou string exact 'environment' (requis par html5-qrcode)
-      const cameraConfig = targetCamId
-        ? targetCamId
-        : (selectedCameraId ? selectedCameraId : { facingMode: "environment" });
-
-      const onScanSuccess = async (decodedText: string, decodedResult: any) => {
-        // SUCCÈS DÉTECTION CODE-BARRES EN DIRECT !
-        playBarcodeBeep();
-        const cleanCode = decodedText.trim();
-        setDetectionFormat(decodedResult.result?.format?.formatName || 'Code-barres');
-
-        // Capture d'un snapshot de la caméra pour archiver l'image de la preuve
-        let snapshotDataUrl: string | undefined;
-        try {
-          const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
-          if (videoElem) {
-            const canvas = document.createElement('canvas');
-            canvas.width = videoElem.videoWidth || 640;
-            canvas.height = videoElem.videoHeight || 480;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(videoElem, 0, 0, canvas.width, canvas.height);
-              snapshotDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-            }
-          }
-        } catch {
-          // Optionnel
-        }
-
-        // Arrêt du scanner
-        await stopLiveScanner();
-
-        // Envoi au parent
-        onBarcodeChange(cleanCode, snapshotDataUrl);
+      // Spécification de la caméra avec contraintes HD 1080p et autofocus continu
+      const cameraConstraints: MediaTrackConstraints = {
+        facingMode: targetCamId ? undefined : { ideal: 'environment' },
+        width: { min: 1280, ideal: 1920 },
+        height: { min: 720, ideal: 1080 },
+        // @ts-ignore
+        focusMode: 'continuous',
+        // @ts-ignore
+        advanced: [{ focusMode: 'continuous' }]
       };
+
+      const cameraParam = targetCamId || (selectedCameraId ? selectedCameraId : cameraConstraints);
 
       try {
         await scanner.start(
-          cameraConfig,
+          cameraParam,
           scanConfig,
-          onScanSuccess,
+          (decodedText, decodedResult) => {
+            handleScanSuccess(decodedText, decodedResult?.result?.format?.formatName);
+          },
           () => {}
         );
       } catch (firstErr) {
-        console.warn('Premier essai start caméra échoué, tentative fallback standard:', firstErr);
-        // Fallback avec caméra user ou première webcam
+        console.warn('[BarcodeScannerCard] Premier essai start caméra échoué, essai direct facingMode:', firstErr);
+        // Fallback sans contraintes avancées
         await scanner.start(
-          { facingMode: "user" },
+          { facingMode: 'environment' },
           scanConfig,
-          onScanSuccess,
+          (decodedText, decodedResult) => {
+            handleScanSuccess(decodedText, decodedResult?.result?.format?.formatName);
+          },
           () => {}
         );
       }
 
-      // Dès que la caméra est active et autorisée, lister les caméras disponibles pour le basculement
+      // Démarrage simultané de la boucle d'analyse de trames temps réel
+      startRealtimeFrameWorker();
+
+      // Charger les caméras disponibles pour permettre le basculement
       fetchAvailableCameras();
 
     } catch (err: any) {
-      console.warn('Erreur démarrage scanner live:', err);
+      console.warn('[BarcodeScannerCard] Erreur démarrage scanner live:', err);
       await stopLiveScanner();
 
       if (err?.name === 'NotAllowedError' || String(err).includes('Permission') || err?.name === 'SecurityError') {
-        setCameraError("Autorisation caméra refusée ou bloquée par le navigateur (requiert HTTPS). Vous pouvez photographier le code-barres avec votre téléphone :");
+        setCameraError("Autorisation caméra refusée ou restreinte. Vous pouvez photographier le code-barres avec le bouton ci-dessous :");
       } else if (err?.name === 'NotFoundError') {
         setCameraError("Aucun capteur caméra détecté sur cet appareil.");
       } else {
-        setCameraError("Impossible d'activer le flux direct de la caméra. Vous pouvez photographier le code-barres avec votre téléphone :");
+        setCameraError("Impossible d'activer le flux vidéo direct. Vous pouvez photographier le code-barres directement :");
       }
     }
   };
 
   /**
-   * Arrêt propre du scanner vidéo
+   * Arrêt propre du scanner
    */
   const stopLiveScanner = async () => {
+    isScanningRef.current = false;
+
+    if (animFrameIdRef.current) {
+      cancelAnimationFrame(animFrameIdRef.current);
+      animFrameIdRef.current = null;
+    }
+
     if (scannerInstanceRef.current) {
       try {
         if (scannerInstanceRef.current.isScanning) {
@@ -219,27 +309,62 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         }
         scannerInstanceRef.current.clear();
       } catch (err) {
-        console.warn('Erreur lors de l’arrêt du scanner:', err);
+        console.warn('[BarcodeScannerCard] Erreur arrêt scanner:', err);
       }
       scannerInstanceRef.current = null;
     }
+
     setIsLiveScanning(false);
+    setTorchOn(false);
   };
 
   /**
-   * Clic sur le bouton Caméra (Vérifie d'abord l'autorisation utilisateur)
+   * Bascule Torche / Lampe Flash
+   */
+  const toggleTorch = async () => {
+    try {
+      const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
+      const stream = videoElem?.srcObject as MediaStream;
+      const track = stream?.getVideoTracks?.()[0];
+      if (track) {
+        const nextState = !torchOn;
+        await track.applyConstraints({
+          advanced: [{ torch: nextState }] as any
+        });
+        setTorchOn(nextState);
+      }
+    } catch (e) {
+      console.warn('[BarcodeScannerCard] Torche non supportée sur cet appareil:', e);
+    }
+  };
+
+  /**
+   * Bascule Zoom (1x / 2x) pour faciliter la mise au point sur codes fins
+   */
+  const toggleZoom = async () => {
+    try {
+      const videoElem = document.querySelector(`#${scannerContainerId} video`) as HTMLVideoElement;
+      const stream = videoElem?.srcObject as MediaStream;
+      const track = stream?.getVideoTracks?.()[0];
+      if (track) {
+        const nextZoom = zoomLevel === 1 ? 2 : 1;
+        await track.applyConstraints({
+          advanced: [{ zoom: nextZoom }] as any
+        });
+        setZoomLevel(nextZoom);
+      } else {
+        setZoomLevel(zoomLevel === 1 ? 2 : 1);
+      }
+    } catch (e) {
+      setZoomLevel(zoomLevel === 1 ? 2 : 1);
+    }
+  };
+
+  /**
+   * Clic sur le bouton Scanner : ouvre le cadre de visée dans la carte
    */
   const handleCameraClick = () => {
     setCameraError(null);
-
-    // Sur smartphone ou en HTTP sans HTTPS (où les navigateurs bloquent getUserMedia),
-    // déclencher directement l'appareil photo natif du téléphone via capture="environment"
-    if (isMobileOrInsecure()) {
-      if (cameraCaptureInputRef.current) {
-        cameraCaptureInputRef.current.click();
-        return;
-      }
-    }
 
     if (getStoredCameraPermission()) {
       startLiveScanner();
@@ -259,8 +384,6 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
       startLiveScanner();
     } else if (decision === 'once') {
       startLiveScanner();
-    } else {
-      // Annulation : aucun message d'erreur, l'utilisateur continue librement
     }
   };
 
@@ -270,7 +393,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
   };
 
   /**
-   * Changer de caméra si plusieurs disponibles
+   * Changer de caméra
    */
   const handleSwitchCamera = async () => {
     if (cameras.length <= 1) return;
@@ -284,7 +407,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
   };
 
   /**
-   * Traitement d'une photo / fichier sélectionné (PC ou Smartphone)
+   * Traitement d'une photo / fichier sélectionné (avec moteur multi-passes anti-hachures)
    */
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -298,12 +421,10 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
     setIsDecodingFile(true);
     setCameraError(null);
 
-    // Lecture base64 pour affichage immédiat
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
 
-      // Décodage local sécurisé du code-barres contenu dans l'image
       try {
         const decoded = await decodeBarcodeFromImage(file);
         if (decoded && decoded.text) {
@@ -311,8 +432,6 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
           setDetectionFormat(decoded.format || 'Code-barres');
           onBarcodeChange(decoded.text, base64);
         } else {
-          // Aucun code-barres n'a pu être lu automatiquement
-          // On conserve tout de même l'image pour que l'utilisateur n'ait pas à la re-sélectionner
           onBarcodeChange(barcode || '', base64);
           setCameraError("Aucun code-barres n'a été reconnu sur cette photo. Cadrez de plus près ou saisissez le code manuellement ci-dessous.");
         }
@@ -338,7 +457,39 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
             : 'bg-white border-gray-200 hover:border-gray-300'
       }`}
     >
-      {/* Input de fichier caché : strictement pour importer une photo */}
+      {/* Styles injectés pour contraindre le conteneur vidéo Html5Qrcode à la taille exacte du cadre */}
+      <style>{`
+        #${scannerContainerId} {
+          position: absolute !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          border: none !important;
+          overflow: hidden !important;
+        }
+        #${scannerContainerId} video {
+          object-fit: cover !important;
+          width: 100% !important;
+          height: 100% !important;
+          border-radius: 0.875rem !important;
+        }
+        #${scannerContainerId}__scan_region {
+          width: 100% !important;
+          height: 100% !important;
+        }
+        #${scannerContainerId}__dashboard_section,
+        #${scannerContainerId}__header_message,
+        #${scannerContainerId}__scan_region img {
+          display: none !important;
+        }
+        @keyframes laserSweepAnim {
+          0% { top: 12%; opacity: 0.75; }
+          50% { top: 86%; opacity: 1; }
+          100% { top: 12%; opacity: 0.75; }
+        }
+      `}</style>
+
+      {/* Input de fichier pour importer une photo */}
       <input
         ref={fileInputRef}
         type="file"
@@ -347,7 +498,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         onChange={handleFileChange}
       />
 
-      {/* Input caméra caché : déclenchement direct de l'appareil photo du smartphone pour photographier le code-barres */}
+      {/* Input caméra natif de secours */}
       <input
         ref={cameraCaptureInputRef}
         type="file"
@@ -365,14 +516,14 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
           </div>
           <div>
             <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
-              <span>4. Image Code-barres (Détecteur Dédié)</span>
+              <span>4. Image Code-barres (Cadre Dédié)</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-normal border border-blue-200">
                 100% Local & Sécurisé
               </span>
             </h4>
             <div className="flex items-center gap-2">
               <p className="text-[10px] text-gray-500">
-                Scannez en direct ou chargez une photo (PC / Smartphone)
+                Cadre de visée optimisé pour codes-barres 1D/2D et hachurés
               </p>
               {hasPermanentPermission && (
                 <span className="text-[10px] text-cyan-700 font-medium">
@@ -399,7 +550,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         )}
       </div>
 
-      {/* Message d'autorisation Caméra (3 choix : Une fois pour toute / Cette fois seulement / Annuler) */}
+      {/* Message d'autorisation Caméra */}
       {showPermissionPrompt && !isLiveScanning && (
         <div className="mb-3">
           <CameraPermissionPrompt
@@ -410,48 +561,121 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
       )}
 
       {/* =========================================================================
-          MODE SCANNER EN DIRECT (CAMÉRA SPÉCIFIQUE CODE-BARRES)
+          MODE SCANNER EN DIRECT : CADRE DE BARCODE COMPACT ET ULTRA-PRÉCIS
       ========================================================================= */}
       {isLiveScanning && (
-        <div className="relative rounded-xl overflow-hidden bg-black mb-3 border-2 border-cyan-400 shadow-md">
-          {/* Viewport pour html5-qrcode */}
-          <div id={scannerContainerId} className="w-full min-h-[260px] bg-black" />
+        <div className="relative w-full h-[270px] sm:h-[290px] rounded-2xl overflow-hidden bg-slate-950 border-2 border-cyan-500 shadow-xl mb-3 flex items-center justify-center select-none">
+          {/* Conteneur vidéo Html5Qrcode restreint à la boîte */}
+          <div id={scannerContainerId} />
 
-          {/* Guide visuel laser animé au centre */}
-          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
-            <div className="relative w-4/5 max-w-[280px] h-28 border-2 border-cyan-400 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.5)] flex items-center justify-center">
-              {/* Ligne laser rouge animée */}
-              <div className="absolute inset-x-0 h-0.5 bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse" />
-              <span className="text-[10px] font-mono text-cyan-200 bg-black/70 px-2 py-0.5 rounded backdrop-blur-xs">
-                Placez le code-barres dans ce cadre
-              </span>
+          {/* Masque sombre et CADRE DE BARCODE central ciblé */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            {/* Voile d'ombrage périphérique pour focaliser l'attention */}
+            <div className="absolute inset-0 bg-slate-950/45" />
+
+            {/* LE CADRE DE VISÉE BARCODE DÉDIÉ */}
+            <div
+              className={`relative z-10 w-[86%] max-w-[310px] h-[110px] sm:h-[120px] rounded-xl transition-all duration-200 flex flex-col items-center justify-center ${
+                scanSucceeded
+                  ? 'border-4 border-emerald-400 bg-emerald-500/25 shadow-[0_0_35px_rgba(16,185,129,0.95)] scale-102'
+                  : 'border-2 border-cyan-400/90 shadow-[0_0_22px_rgba(6,182,212,0.45)]'
+              }`}
+            >
+              {/* 4 coins de guidage haute visibilité */}
+              <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-emerald-400 rounded-tl-sm" />
+              <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-emerald-400 rounded-tr-sm" />
+              <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-emerald-400 rounded-bl-sm" />
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-emerald-400 rounded-br-sm" />
+
+              {/* Laser rouge de balayage animé */}
+              {!scanSucceeded && (
+                <div
+                  className="absolute inset-x-2 h-0.5 bg-gradient-to-r from-red-500 via-rose-300 to-red-500 shadow-[0_0_12px_#ef4444]"
+                  style={{ animation: 'laserSweepAnim 1.9s ease-in-out infinite' }}
+                />
+              )}
+
+              {/* Ligne médiane de repère */}
+              <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 h-[1px] bg-cyan-300/25 pointer-events-none" />
+
+              {/* Badge d'état dans le cadre */}
+              <div className="relative z-20 px-2.5 py-1 rounded-full bg-slate-950/80 backdrop-blur-xs border border-cyan-500/30 text-[10px] font-mono text-cyan-200 flex items-center gap-1.5 shadow-md">
+                {scanSucceeded ? (
+                  <span className="text-emerald-300 font-bold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    Code capté !
+                  </span>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span>Placez le code-barres dans ce cadre</span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Barre d'outils du scanner */}
-          <div className="absolute bottom-2 inset-x-0 flex items-center justify-between px-3 pointer-events-auto">
-            {cameras.length > 1 && (
+          {/* Barre d'outils supérieure dans le cadre */}
+          <div className="absolute top-2.5 inset-x-3 flex items-center justify-between pointer-events-auto z-20">
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 bg-black/70 backdrop-blur-xs rounded-lg text-[10px] font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                Scan IA 1080p
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {/* Bouton Torche / Flash */}
               <button
                 type="button"
-                onClick={handleSwitchCamera}
-                className="px-2.5 py-1.5 bg-black/70 hover:bg-black text-white text-xs font-semibold rounded-lg flex items-center gap-1 backdrop-blur-xs cursor-pointer"
-                title="Changer de caméra"
+                onClick={toggleTorch}
+                className={`p-1.5 rounded-lg text-xs font-semibold backdrop-blur-xs cursor-pointer transition-all ${
+                  torchOn ? 'bg-amber-400 text-slate-950 shadow-[0_0_10px_#f59e0b]' : 'bg-black/70 hover:bg-black text-white'
+                }`}
+                title={torchOn ? 'Éteindre la torche' : 'Allumer la torche (recommandé pour éclairer les barres)'}
               >
-                <SwitchCamera className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Changer</span>
+                <Zap className="w-3.5 h-3.5" />
               </button>
-            )}
 
-            <div className="ml-auto">
+              {/* Bouton Zoom */}
+              <button
+                type="button"
+                onClick={toggleZoom}
+                className="px-2 py-1 bg-black/70 hover:bg-black text-white text-[11px] font-bold rounded-lg backdrop-blur-xs cursor-pointer border border-white/10"
+                title="Basculer le zoom"
+              >
+                {zoomLevel}x
+              </button>
+
+              {/* Bouton Switch caméra */}
+              {cameras.length > 1 && (
+                <button
+                  type="button"
+                  onClick={handleSwitchCamera}
+                  className="p-1.5 bg-black/70 hover:bg-black text-white text-xs rounded-lg backdrop-blur-xs cursor-pointer border border-white/10"
+                  title="Changer de caméra"
+                >
+                  <SwitchCamera className="w-3.5 h-3.5 text-cyan-400" />
+                </button>
+              )}
+
+              {/* Bouton Fermer */}
               <button
                 type="button"
                 onClick={stopLiveScanner}
-                className="px-3 py-1.5 bg-red-600/90 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-md cursor-pointer flex items-center gap-1"
+                className="p-1.5 bg-red-600/90 hover:bg-red-700 text-white rounded-lg shadow-md cursor-pointer"
+                title="Arrêter le scanner"
               >
                 <X className="w-3.5 h-3.5" />
-                <span>Arrêter</span>
               </button>
             </div>
+          </div>
+
+          {/* Pied du cadre : conseil de performance */}
+          <div className="absolute bottom-2 inset-x-3 flex items-center justify-center pointer-events-none z-20">
+            <span className="text-[10px] text-slate-300 bg-black/70 px-2.5 py-0.5 rounded-full backdrop-blur-xs border border-white/10">
+              Autofocus continu • Détection ultra-rapide anti-rayures
+            </span>
           </div>
         </div>
       )}
@@ -460,19 +684,21 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
       {isDecodingFile && (
         <div className="p-3 mb-2 bg-cyan-50 border border-cyan-200 rounded-xl flex items-center gap-2 text-xs text-cyan-800 animate-pulse">
           <RefreshCw className="w-4 h-4 animate-spin text-cyan-600" />
-          <span className="font-semibold">Décodage du code-barres par le moteur local...</span>
+          <span className="font-semibold">Moteur haute performance : analyse multi-passes en cours...</span>
         </div>
       )}
 
-      {/* Message d'information / aide caméra code-barres */}
+      {/* Message d'aide / erreur */}
       {cameraError && (
         <div className="p-3 mb-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 space-y-2 shadow-2xs">
           <div className="flex items-start gap-2">
-            <Barcode className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <p className="font-medium leading-relaxed flex-1">{cameraError}</p>
+            <Camera className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold">{cameraError}</span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+          <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-amber-200/60">
             <button
               type="button"
               onClick={() => {
@@ -482,7 +708,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer shadow-xs active:scale-97 transition-all"
             >
               <Camera className="w-3.5 h-3.5" />
-              <span>Photographier le code-barres (Appareil photo)</span>
+              <span>Photographier avec le téléphone</span>
             </button>
 
             <button
@@ -494,7 +720,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
               className="flex items-center gap-1 px-2.5 py-1 bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg text-xs font-semibold cursor-pointer shadow-2xs"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Réessayer le flux</span>
+              <span>Réessayer le cadre</span>
             </button>
 
             <button
@@ -586,7 +812,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
           </div>
         </div>
       ) : !isLiveScanning && (
-        /* Boutons d'action initiaux : Caméra ou Fichier */
+        /* Boutons d'action initiaux : Scanner (Cadre) ou Fichier */
         <div className="grid grid-cols-2 gap-2 mt-2">
           <button
             type="button"
@@ -594,7 +820,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
             className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl border border-cyan-200 bg-cyan-50/70 hover:bg-cyan-100 text-cyan-800 text-xs font-bold cursor-pointer transition-all shadow-2xs hover:shadow-xs active:scale-98"
           >
             <Camera className="w-4 h-4 text-cyan-700" />
-            <span>Caméra (Scanner)</span>
+            <span>Cadre Scanner (Direct)</span>
           </button>
 
           <button
@@ -608,7 +834,7 @@ export const BarcodeScannerCard: React.FC<BarcodeScannerCardProps> = ({
         </div>
       )}
 
-      {/* Saisie ou correction manuelle si le code n'est pas lisible */}
+      {/* Saisie ou correction manuelle si le code est très effacé */}
       {manualOverrideOpen && (
         <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-2">
           <label className="text-[11px] font-bold text-gray-700 block">
