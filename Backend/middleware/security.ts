@@ -150,6 +150,7 @@ export const secureHelmet = helmet({
   frameguard: false, // Permet l'affichage dans la console de gestion interne
   hidePoweredBy: true, // Masque le header X-Powered-By: Express
   noSniff: true, // X-Content-Type-Options: nosniff
+  originAgentCluster: false, // Évite le warning navigateur "Origin-Agent-Cluster header, but could not be origin-keyed" sur IP locale/proxy
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   hsts: false, // Désactivé en dev/proxy HTTP local pour éviter les avertissements HSTS sur IP
 });
