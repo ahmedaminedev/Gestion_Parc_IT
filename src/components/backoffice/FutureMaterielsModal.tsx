@@ -6,11 +6,9 @@ import {
   Trash2,
   CheckCircle2,
   Camera,
-  Barcode,
   FileText,
   Receipt,
   Image as ImageIcon,
-  Lock,
   Eye,
   Check,
   RefreshCw,
@@ -38,7 +36,6 @@ import {
 } from '../../types/itPark';
 import { FormAlert } from '../common/FormAlert';
 import { CustomConfirmModal } from '../common/CustomConfirmModal';
-import { BarcodeScannerCard } from './BarcodeScannerCard';
 import {
   CameraPermissionPrompt,
   CameraPermissionDecision,
@@ -58,7 +55,6 @@ interface CameraOrFileInputProps {
   onClear: () => void;
   onZoom: (src: string, title: string) => void;
   icon: React.ReactNode;
-  isBarcode?: boolean;
 }
 
 const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
@@ -69,7 +65,6 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
   onClear,
   onZoom,
   icon,
-  isBarcode,
 }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
@@ -239,7 +234,7 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-      onChange(dataUrl, `camera_${isBarcode ? 'barcode' : 'photo'}_${Date.now()}.jpg`);
+      onChange(dataUrl, `camera_photo_${Date.now()}.jpg`);
     }
     stopCamera();
   };
@@ -252,7 +247,7 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      onChange(base64, `camera_${isBarcode ? 'barcode' : 'photo'}_${Date.now()}.jpg`);
+      onChange(base64, `camera_photo_${Date.now()}.jpg`);
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -357,14 +352,8 @@ const CameraOrFileInput: React.FC<CameraOrFileInputProps> = ({
             muted
             className="w-full h-full object-cover"
           />
-          {/* Viseur visuel pour scanner ou cadrer */}
-          <div className="absolute inset-4 border-2 border-white/60 border-dashed rounded-lg pointer-events-none flex items-center justify-center">
-            {isBarcode && (
-              <span className="bg-black/60 text-white text-[10px] px-2 py-1 rounded backdrop-blur-xs font-mono">
-                Cadrez l'étiquette code-barres
-              </span>
-            )}
-          </div>
+          {/* Viseur visuel pour cadrer la photo */}
+          <div className="absolute inset-4 border-2 border-white/60 border-dashed rounded-lg pointer-events-none flex items-center justify-center" />
 
           {/* Contrôles caméra */}
           <div className="absolute bottom-3 inset-x-0 flex items-center justify-center gap-3 px-4">
@@ -557,13 +546,10 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
   // Alertes générales
   const [modalAlert, setModalAlert] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; message: string } | null>(null);
 
-  // État du formulaire d'ajout Futur Matériel (SIMPLIFIÉ : 4 images + 1 seul barcode auto)
+  // État du formulaire d'ajout Futur Matériel (3 photos : Matériel, Fiche, Facture)
   const [imageMateriel, setImageMateriel] = useState<string>('');
   const [imageFicheMateriel, setImageFicheMateriel] = useState<string>('');
   const [imageFacture, setImageFacture] = useState<string>('');
-  const [imageBarcode, setImageBarcode] = useState<string>('');
-  const [barcodeAuto, setBarcodeAuto] = useState<string>('');
-  const [isScanningBarcode, setIsScanningBarcode] = useState(false);
   const [isSavingFuture, setIsSavingFuture] = useState(false);
 
   // État pour les détails
@@ -659,32 +645,13 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
   if (!isOpen) return null;
 
   // =========================================================================
-  // GESTION DU CODE-BARRES UNIQUE AUTOMATIQUE
-  // =========================================================================
-
-  const handleBarcodeChange = (detectedCode: string, imageBase64?: string) => {
-    if (imageBase64) {
-      setImageBarcode(imageBase64);
-    }
-    setBarcodeAuto(detectedCode.trim());
-    setIsScanningBarcode(false);
-  };
-
-  const handleClearBarcode = () => {
-    setImageBarcode('');
-    setBarcodeAuto('');
-  };
-
-  // =========================================================================
-  // ENREGISTREMENT DU FUTUR MATÉRIEL (SIMPLIFIÉ)
+  // ENREGISTREMENT DU FUTUR MATÉRIEL (PRÉ-INVENTAIRE PAR PHOTOS)
   // =========================================================================
 
   const handleOpenAddForm = () => {
     setImageMateriel('');
     setImageFicheMateriel('');
     setImageFacture('');
-    setImageBarcode('');
-    setBarcodeAuto('');
     setModalAlert(null);
     setViewMode('form');
   };
@@ -693,12 +660,12 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
     e.preventDefault();
     setModalAlert(null);
 
-    // VALIDATION : "puisque les images optionnel donc il faut au moin un seul remplit dans le formulaire de future materiel"
-    const hasAtLeastOne = !!(imageMateriel || imageFicheMateriel || imageFacture || imageBarcode || barcodeAuto);
+    // VALIDATION : Au moins une photo requise (matériel, fiche, ou facture)
+    const hasAtLeastOne = !!(imageMateriel || imageFicheMateriel || imageFacture);
     if (!hasAtLeastOne) {
       setModalAlert({
         type: 'warning',
-        message: 'Veuillez fournir au moins une photo (matériel, fiche, facture ou code-barres) pour enregistrer ce futur matériel.'
+        message: 'Veuillez fournir au moins une photo (matériel, fiche ou facture) pour enregistrer ce futur produit.'
       });
       return;
     }
@@ -709,11 +676,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
         imageMateriel,
         imageFicheMateriel,
         imageFacture,
-        imageBarcode,
-        barcode: barcodeAuto.trim(),
-        barcode1: barcodeAuto.trim(),
-        codeSeriePropose: barcodeAuto.trim(),
-        designation: barcodeAuto ? `Futur Matériel (${barcodeAuto})` : 'Futur Matériel par images',
+        designation: 'Futur Produit par images',
         statut: 'En attente',
         dateCreation: new Date().toISOString().split('T')[0],
       };
@@ -722,7 +685,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
       if (!res.success) {
         setModalAlert({
           type: 'error',
-          message: res.message || "Erreur lors de l'enregistrement du futur matériel."
+          message: res.message || "Erreur lors de l'enregistrement du futur produit."
         });
         setIsSavingFuture(false);
         return;
@@ -731,7 +694,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
       setViewMode('list');
       setModalAlert({
         type: 'success',
-        message: 'Nouveau futur matériel enregistré avec succès dans la base.'
+        message: 'Nouveau futur produit enregistré avec succès dans la base.'
       });
     } catch (err: any) {
       setModalAlert({
@@ -752,12 +715,12 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
     setTransformAlert(null);
 
     const defaultGroup = groupes[0]?.id || '';
-    const initialSerial = (future.barcode || future.barcode1 || future.codeSeriePropose || '').trim();
+    const initialSerial = (future.codeSeriePropose || '').trim();
 
     setMatForm({
       ref_immo: '',
-      designation: future.designation && !future.designation.includes('Futur Matériel') ? future.designation : '',
-      codeSerie: initialSerial, // Pré-remplissage automatique avec le barcode auto extrait
+      designation: future.designation && !future.designation.includes('Futur') ? future.designation : '',
+      codeSerie: initialSerial,
       id_GroupeMateriel: defaultGroup,
       statut: 'En stock',
       qte: 1,
@@ -974,13 +937,13 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
    * Helper pour savoir si un futur matériel existe déjà dans la table des matériels
    */
   const findExistingMaterielInParc = (future: FutureMateriel): Materiel | undefined => {
-    const serial = (future.barcode || future.barcode1 || future.codeSeriePropose || '').trim().toLowerCase();
-    if (serial) {
-      const match = materiels.find(m => (m.codeSerie || '').trim().toLowerCase() === serial);
-      if (match) return match;
-    }
     if (future.id_MaterielCree) {
       const match = materiels.find(m => m.id === future.id_MaterielCree);
+      if (match) return match;
+    }
+    const serial = (future.codeSeriePropose || '').trim().toLowerCase();
+    if (serial) {
+      const match = materiels.find(m => (m.codeSerie || '').trim().toLowerCase() === serial);
       if (match) return match;
     }
     return undefined;
@@ -1045,15 +1008,15 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
   const handleDeleteFutureMateriel = (future: FutureMateriel) => {
     setConfirmConfig({
       isOpen: true,
-      title: "Supprimer le futur matériel",
-      subtitle: `Futur Matériel ID: ${future.id}`,
+      title: "Supprimer le futur produit",
+      subtitle: `ID: ${future.id}`,
       type: "warning",
-      message: `Voulez-vous supprimer cette fiche de futur matériel (pré-inventaire) ? Cette action est utile pour corriger une erreur de saisie.`,
+      message: `Voulez-vous supprimer cette fiche de futur produit (pré-inventaire) ? Cette action est utile pour corriger une erreur de saisie.`,
       impacts: [
         "Cette fiche et ses photos de pré-inventaire seront effacées.",
         "La table des matériels existants ne sera pas modifiée."
       ],
-      confirmText: "Supprimer futur matériel",
+      confirmText: "Supprimer futur produit",
       cancelText: "Conserver",
       onConfirm: async () => {
         setIsConfirmLoading(true);
@@ -1061,7 +1024,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
           await itParkService.deleteFutureMateriel(future.id);
           setModalAlert({
             type: 'success',
-            message: "Le futur matériel a été supprimé avec succès."
+            message: "Le futur produit a été supprimé avec succès."
           });
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
           if (viewMode === 'details') setViewMode('list');
@@ -1082,9 +1045,10 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
     if (statusFilter !== 'all' && item.statut !== statusFilter) return false;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
-      const bCode = (item.barcode || item.barcode1 || '').toLowerCase();
       const des = (item.designation || '').toLowerCase();
-      return bCode.includes(q) || des.includes(q);
+      const ref = (item.referenceProposee || '').toLowerCase();
+      const id = (item.id || '').toLowerCase();
+      return des.includes(q) || ref.includes(q) || id.includes(q);
     }
     return true;
   });
@@ -1106,9 +1070,9 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black tracking-tight">
-                  {viewMode === 'list' && 'Pré-inventaire par images & Barcode'}
-                  {viewMode === 'form' && 'Nouveau futur matériel (Photos & Barcode auto)'}
-                  {viewMode === 'details' && 'Détails du futur matériel'}
+                  {viewMode === 'list' && 'Pré-inventaire par images'}
+                  {viewMode === 'form' && 'Nouveau futur produit (Photos)'}
+                  {viewMode === 'details' && 'Détails du futur produit'}
                   {viewMode === 'transform' && 'Transformation en Matériel actif (Split-View)'}
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-200 border border-cyan-400/30">
@@ -1116,10 +1080,10 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-300 mt-0.5">
-                {viewMode === 'list' && 'Consultez les futurs matériels, vérifiez leur existence et transformez-les en matériels.'}
-                {viewMode === 'form' && 'Prenez ou téléversez les photos (Caméra ou Fichier) ; le code-barres est extrait automatiquement.'}
-                {viewMode === 'details' && 'Visualisez les 4 photos agrandies et le code-barres extrait.'}
-                {viewMode === 'transform' && 'Comparez les photos à gauche et complétez la fiche matériel à droite avec vérification stricte de série.'}
+                {viewMode === 'list' && 'Consultez les futurs produits en attente, visualisez leurs photos et transformez-les en matériels.'}
+                {viewMode === 'form' && 'Prenez ou téléversez les photos (Caméra ou Fichier) pour le matériel, la fiche et la facture.'}
+                {viewMode === 'details' && 'Visualisez les photos agrandies et les informations du futur produit.'}
+                {viewMode === 'transform' && 'Comparez les photos à gauche et complétez la fiche matériel à droite.'}
               </p>
             </div>
           </div>
@@ -1171,7 +1135,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                   <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="Rechercher par barcode, S/N ou nom..."
+                    placeholder="Rechercher par nom, référence ou ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-black focus:outline-none"
@@ -1203,7 +1167,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 className="flex items-center justify-center gap-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
               >
                 <Plus className="w-4 h-4" />
-                <span>Nouveau Futur Matériel</span>
+                <span>Nouveau Futur Produit</span>
               </button>
             </div>
 
@@ -1213,11 +1177,11 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 <div className="w-14 h-14 rounded-2xl bg-cyan-100 text-cyan-700 mx-auto flex items-center justify-center mb-3">
                   <Camera className="w-7 h-7" />
                 </div>
-                <h4 className="text-sm font-bold text-gray-900 mb-1">Aucun futur matériel trouvé</h4>
+                <h4 className="text-sm font-bold text-gray-900 mb-1">Aucun futur produit trouvé</h4>
                 <p className="text-xs text-gray-500 max-w-md mx-auto mb-4">
                   {searchTerm || statusFilter !== 'all'
                     ? "Aucun résultat ne correspond à vos filtres de recherche."
-                    : "Vous n'avez pas encore enregistré de matériel en pré-inventaire. Cliquez sur le bouton ci-dessous pour capturer ou importer les photos et le code-barres."}
+                    : "Vous n'avez pas encore enregistré de produit en pré-inventaire. Cliquez sur le bouton ci-dessous pour capturer ou importer les photos."}
                 </p>
                 <button
                   type="button"
@@ -1225,14 +1189,13 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                   className="inline-flex items-center gap-2 bg-[#0c1017] hover:bg-black text-white text-xs font-bold px-4 py-2 rounded-xl transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Ajouter un futur matériel</span>
+                  <span>Ajouter un futur produit</span>
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredFutureMateriels.map(item => {
                   const existingMatInParc = findExistingMaterielInParc(item);
-                  const barcodeValue = item.barcode || item.barcode1 || item.codeSeriePropose || '';
 
                   return (
                     <div
@@ -1266,8 +1229,8 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                           </span>
                         </div>
 
-                        {/* Rangée des 4 miniatures d'images */}
-                        <div className="grid grid-cols-4 gap-1.5 mb-3 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                        {/* Rangée des 3 miniatures d'images */}
+                        <div className="grid grid-cols-3 gap-2 mb-3 bg-gray-50 p-2 rounded-xl border border-gray-100">
                           {/* 1. Matériel */}
                           <div
                             onClick={() => item.imageMateriel && setZoomedImage({ src: item.imageMateriel, title: 'Photo du Matériel' })}
@@ -1312,40 +1275,19 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                               <span>Facture</span>
                             )}
                           </div>
-
-                          {/* 4. Barcode */}
-                          <div
-                            onClick={() => item.imageBarcode && setZoomedImage({ src: item.imageBarcode, title: 'Code-barres' })}
-                            className={`aspect-square rounded-lg overflow-hidden border flex items-center justify-center text-[10px] text-center p-1 cursor-pointer transition-transform hover:scale-105 ${
-                              item.imageBarcode ? 'border-cyan-300 bg-white' : 'border-dashed border-gray-300 bg-gray-100 text-gray-400'
-                            }`}
-                            title="Code-barres"
-                          >
-                            {item.imageBarcode ? (
-                              <img src={item.imageBarcode} alt="Barcode" className="w-full h-full object-cover" />
-                            ) : (
-                              <span>Barcode</span>
-                            )}
-                          </div>
                         </div>
 
-                        {/* Barcode auto extrait */}
+                        {/* Information produit */}
                         <div className="p-2.5 rounded-xl bg-gray-50 border border-gray-200 mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Barcode className="w-4 h-4 text-cyan-600 shrink-0" />
+                            <ImageIcon className="w-4 h-4 text-cyan-600 shrink-0" />
                             <div>
-                              <span className="text-[10px] font-semibold text-gray-500 block">Code-barres auto :</span>
-                              <span className="text-xs font-mono font-bold text-gray-900">
-                                {barcodeValue || 'Aucun code détecté'}
+                              <span className="text-[10px] font-semibold text-gray-500 block">Pré-inventaire :</span>
+                              <span className="text-xs font-bold text-gray-900">
+                                {item.designation || 'Futur produit par photos'}
                               </span>
                             </div>
                           </div>
-
-                          {barcodeValue && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 font-bold flex items-center gap-1">
-                              <Lock className="w-2.5 h-2.5" /> Auto
-                            </span>
-                          )}
                         </div>
 
                         {/* Statut d'existence dans les matériels */}
@@ -1425,7 +1367,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
         )}
 
         {/* =========================================================================
-            VUE 2 : FORMULAIRE SIMPLIFIÉ D'AJOUT FUTUR MATÉRIEL (MODE 'form')
+            VUE 2 : FORMULAIRE SIMPLIFIÉ D'AJOUT FUTUR PRODUIT (MODE 'form')
         ========================================================================= */}
         {viewMode === 'form' && (
           <form onSubmit={handleSaveFutureMateriel} className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1434,15 +1376,15 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 <Sparkles className="w-5 h-5" />
               </div>
               <div className="text-xs text-cyan-950">
-                <h4 className="font-bold text-sm text-cyan-900 mb-0.5">Pré-inventaire par images & Barcode</h4>
+                <h4 className="font-bold text-sm text-cyan-900 mb-0.5">Pré-inventaire par photos</h4>
                 <p className="text-cyan-800 leading-relaxed">
-                  Pour chaque photo, choisissez entre <strong>Caméra</strong> ou <strong>Fichier</strong>. Les photos sont optionnelles, mais <strong>au moins une photo</strong> est requise pour enregistrer ce futur matériel. L'image de code-barres alimente automatiquement l'unique champ de barcode ci-dessous.
+                  Pour chaque photo, choisissez entre <strong>Caméra</strong> ou <strong>Fichier</strong>. Les photos sont optionnelles, mais <strong>au moins une photo</strong> (matériel, fiche ou facture) est requise pour enregistrer ce futur produit.
                 </p>
               </div>
             </div>
 
-            {/* 1. LES 4 IMAGES AVEC CHOIX CAMÉRA OU FICHIER */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 3 IMAGES AVEC CHOIX CAMÉRA OU FICHIER */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Photo 1 : Photo Matériel */}
               <CameraOrFileInput
                 label="1. Photo du Matériel"
@@ -1475,70 +1417,6 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 onZoom={(src, title) => setZoomedImage({ src, title })}
                 icon={<Receipt className="w-4 h-4" />}
               />
-
-              {/* Photo 4 : Détecteur Dédié Code-barres (Caméra Spécifique ou Fichier / Photo) */}
-              <BarcodeScannerCard
-                image={imageBarcode}
-                barcode={barcodeAuto}
-                onBarcodeChange={(code, img) => handleBarcodeChange(code, img)}
-                onClear={handleClearBarcode}
-                onZoom={(src, title) => setZoomedImage({ src, title })}
-              />
-            </div>
-
-            {/* 2. APRÈS LES IMAGES : UN SEUL CHAMP DE BARCODE AUTO LIÉ À L'IMAGE BARCODE */}
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                  <Barcode className="w-4 h-4 text-cyan-600" />
-                  <span>Code-barres extrait automatiquement (Lié à la détection)</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  {barcodeAuto && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newCode = prompt("Corriger ou ajuster le code-barres :", barcodeAuto);
-                        if (newCode !== null && newCode.trim()) {
-                          setBarcodeAuto(newCode.trim());
-                        }
-                      }}
-                      className="text-[11px] font-bold text-cyan-700 hover:text-cyan-800 underline cursor-pointer"
-                    >
-                      Ajuster le code
-                    </button>
-                  )}
-                  <span className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
-                    <Lock className="w-3 h-3 text-gray-400" />
-                    Lecture seule
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative">
-                <input
-                  type="text"
-                  readOnly
-                  value={barcodeAuto}
-                  placeholder={isScanningBarcode ? "Détection automatique du code-barres en cours..." : "En attente du scan caméra ou de l'image de code-barres..."}
-                  className="w-full pl-3.5 pr-28 py-3 bg-gray-100/90 border border-gray-300 rounded-xl font-mono text-sm text-gray-900 cursor-not-allowed select-none focus:outline-none"
-                />
-
-                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                  {isScanningBarcode && (
-                    <RefreshCw className="w-4 h-4 text-cyan-600 animate-spin" />
-                  )}
-                  {barcodeAuto && !isScanningBarcode && (
-                    <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Détecté
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <p className="text-[11px] text-gray-500">
-                Ce champ est protégé en écriture directe. Il est alimenté automatiquement par le scanner caméra ou par l'analyse locale de l'image de code-barres.
-              </p>
             </div>
 
             {/* Boutons d'action */}
@@ -1555,14 +1433,14 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 disabled={isSavingFuture}
                 className="px-6 py-2.5 rounded-xl text-white bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 transition-all"
               >
-                {isSavingFuture ? 'Enregistrement...' : 'Enregistrer le futur matériel'}
+                {isSavingFuture ? 'Enregistrement...' : 'Enregistrer le futur produit'}
               </button>
             </div>
           </form>
         )}
 
         {/* =========================================================================
-            VUE 3 : DÉTAILS DU FUTUR MATÉRIEL (MODE 'details')
+            VUE 3 : DÉTAILS DU FUTUR PRODUIT (MODE 'details')
         ========================================================================= */}
         {viewMode === 'details' && selectedFutureForDetails && (
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1584,8 +1462,8 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
               </span>
             </div>
 
-            {/* 4 Photos en grand format */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* 3 Photos en grand format */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
                 <h5 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
                   <Camera className="w-4 h-4 text-cyan-600" />
@@ -1642,33 +1520,14 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                   )}
                 </div>
               </div>
-
-              <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
-                <h5 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                  <Barcode className="w-4 h-4 text-purple-600" />
-                  <span>Image Code-barres</span>
-                </h5>
-                <div className="aspect-video rounded-xl overflow-hidden bg-black/5 border border-gray-200 flex items-center justify-center">
-                  {selectedFutureForDetails.imageBarcode ? (
-                    <img
-                      src={selectedFutureForDetails.imageBarcode}
-                      alt="Barcode"
-                      className="w-full h-full object-contain cursor-pointer"
-                      onClick={() => setZoomedImage({ src: selectedFutureForDetails.imageBarcode!, title: 'Image Code-barres' })}
-                    />
-                  ) : (
-                    <span className="text-xs text-gray-400">Aucune image code-barres</span>
-                  )}
-                </div>
-              </div>
             </div>
 
-            {/* Code-barres extrait */}
+            {/* Actions */}
             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex items-center justify-between">
               <div>
-                <span className="text-xs font-semibold text-gray-500 block">Code-barres automatique :</span>
-                <span className="text-sm font-mono font-black text-gray-900">
-                  {selectedFutureForDetails.barcode || selectedFutureForDetails.barcode1 || 'Non renseigné'}
+                <span className="text-xs font-semibold text-gray-500 block">Désignation / Référence proposée :</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {selectedFutureForDetails.designation || selectedFutureForDetails.referenceProposee || 'Non renseigné'}
                 </span>
               </div>
 
@@ -1692,17 +1551,17 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
         {viewMode === 'transform' && futureToTransform && (
           <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
             {/* -------------------------------------------------------------
-                COLONNE GAUCHE (50%) : APERÇU DU FUTUR MATÉRIEL (IMAGES & BARCODE)
+                COLONNE GAUCHE (50%) : APERÇU DU FUTUR PRODUIT (IMAGES)
             -------------------------------------------------------------- */}
             <div className="w-full md:w-1/2 p-6 overflow-y-auto border-r border-gray-200 bg-slate-50/50 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
                   <h4 className="font-black text-sm text-gray-900 flex items-center gap-2">
                     <ImageIcon className="w-4 h-4 text-cyan-600" />
-                    <span>Aperçu du futur matériel</span>
+                    <span>Aperçu du futur produit</span>
                   </h4>
                   <p className="text-[11px] text-gray-500 mt-0.5">
-                    Images et code-barres capturés lors du pré-inventaire.
+                    Images capturées lors du pré-inventaire.
                   </p>
                 </div>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-gray-200 text-gray-700 font-bold">
@@ -1710,28 +1569,8 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                 </span>
               </div>
 
-              {/* Code-barres extrait mis en avant */}
-              <div className="p-3.5 bg-cyan-50/80 border border-cyan-200 rounded-2xl flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-cyan-100 text-cyan-800 rounded-xl">
-                    <Barcode className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-cyan-800 uppercase tracking-wider block">
-                      Code-barres / Série Détecté
-                    </span>
-                    <span className="text-sm font-mono font-black text-cyan-950">
-                      {futureToTransform.barcode || futureToTransform.barcode1 || 'Aucun code'}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-cyan-200 text-cyan-900 flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Auto
-                </span>
-              </div>
-
-              {/* Grille des 4 images avec zoom */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Grille des 3 images avec zoom */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* 1. Matériel */}
                 <div className="p-2.5 bg-white rounded-2xl border border-gray-200 space-y-1.5 shadow-2xs">
                   <span className="text-[10px] font-bold text-gray-700 flex items-center gap-1">
@@ -1790,29 +1629,6 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setZoomedImage({ src: futureToTransform.imageFacture!, title: 'Facture' })}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                        >
-                          <Maximize2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    ) : (
-                      <span className="text-[10px] text-gray-400">Non renseignée</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 4. Code-barres */}
-                <div className="p-2.5 bg-white rounded-2xl border border-gray-200 space-y-1.5 shadow-2xs">
-                  <span className="text-[10px] font-bold text-gray-700 flex items-center gap-1">
-                    <Barcode className="w-3 h-3 text-purple-600" /> Image Code-barres
-                  </span>
-                  <div className="aspect-video rounded-xl overflow-hidden bg-gray-100 border flex items-center justify-center group relative">
-                    {futureToTransform.imageBarcode ? (
-                      <>
-                        <img src={futureToTransform.imageBarcode} alt="Barcode" className="w-full h-full object-contain" />
-                        <button
-                          type="button"
-                          onClick={() => setZoomedImage({ src: futureToTransform.imageBarcode!, title: 'Image Code-barres' })}
                           className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                         >
                           <Maximize2 className="w-4 h-4" />
@@ -1930,7 +1746,7 @@ export const FutureMaterielsModal: React.FC<FutureMaterielsModalProps> = ({
 
                   <div>
                     <label className="font-bold text-xs text-gray-700 mb-1 flex items-center justify-between">
-                      <span>Numéro de Série (Pré-rempli auto)</span>
+                      <span>Numéro de Série</span>
                       {(() => {
                         const curGroup = groupes.find(g => g.id === matForm.id_GroupeMateriel);
                         return curGroup?.codeSerieObligatoire ? (

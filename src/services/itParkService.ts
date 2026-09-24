@@ -188,15 +188,9 @@ class ITParkService {
             imageMateriel: f.imageMateriel || '',
             imageFicheMateriel: f.imageFicheMateriel || '',
             imageFacture: f.imageFacture || '',
-            imageBarcode: f.imageBarcode || '',
-            barcode1: f.barcode1 || '',
-            barcode2: f.barcode2 || '',
-            barcode3: f.barcode3 || '',
-            barcode4: f.barcode4 || '',
-            barcode5: f.barcode5 || '',
             designation: f.designation || '',
             referenceProposee: f.referenceProposee || '',
-            codeSeriePropose: f.codeSeriePropose || f.barcode1 || f.barcode3 || '',
+            codeSeriePropose: f.codeSeriePropose || '',
             statut: f.statut || 'En attente',
             id_MaterielCree: f.id_MaterielCree || '',
             dateCreation: f.dateCreation || '',
@@ -1074,9 +1068,7 @@ class ITParkService {
       const localMat = this.materiels.find(m => (m.codeSerie || '').toLowerCase() === clean.toLowerCase());
       const localFuture = this.futureMateriels.find(f => 
         f.id !== currentFutureId && 
-        ((f.codeSeriePropose || '').toLowerCase() === clean.toLowerCase() || 
-         (f.barcode1 || '').toLowerCase() === clean.toLowerCase() ||
-         (f.barcode3 || '').toLowerCase() === clean.toLowerCase())
+        (f.codeSeriePropose || '').toLowerCase() === clean.toLowerCase()
       );
       return {
         existsInMateriels: !!localMat,

@@ -553,32 +553,21 @@ export interface ChatContact {
 }
 
 // =========================================================================
-// MODÈLE FUTURE MATÉRIEL (Pré-inventaire par images & barcode)
+// MODÈLE FUTURE MATÉRIEL (Pré-inventaire par images)
 // =========================================================================
 export type StatutFutureMateriel = 'En attente' | 'Validé en matériel' | 'Rejeté';
 
 export interface FutureMateriel {
   id: string;
-  // 4 images optionnelles (au moins une requise pour créer le futur matériel)
+  // 3 images optionnelles (au moins une requise pour créer le futur matériel)
   imageMateriel?: string;        // Photo du matériel
   imageFicheMateriel?: string;   // Fiche matériel (contient la référence / caractéristiques)
   imageFacture?: string;         // Facture d'achat / bon de livraison
-  imageBarcode?: string;         // Photo de l'étiquette code-barres
-
-  // Champ Barcode unique (alimenté automatiquement à partir de l'image de code-barres, verrouillé)
-  barcode?: string;              // Code-barres / S/N auto-extrait
-
-  // Rétrocompatibilité éventuelle
-  barcode1?: string;             // Alias ou code secondaire
-  barcode2?: string;
-  barcode3?: string;
-  barcode4?: string;
-  barcode5?: string;
 
   // Informations complémentaires
   designation?: string;          // Nom ou type de matériel
   referenceProposee?: string;    // Référence issue de la fiche ou proposée
-  codeSeriePropose?: string;     // Code série principal utilisé pour les vérifications
+  codeSeriePropose?: string;     // Code série principal si renseigné
   statut: StatutFutureMateriel;
   id_MaterielCree?: string;      // ID du matériel une fois transformé et validé
   dateCreation: string;

@@ -659,7 +659,7 @@ router.delete('/materiels/:id', async (req, res) => {
   }
 });
 
-// ================= FUTURS MATÉRIELS (PRÉ-INVENTAIRE PAR IMAGES & BARCODE) =================
+// ================= FUTURS MATÉRIELS (PRÉ-INVENTAIRE PAR IMAGES) =================
 // 1. Lister tous les futurs matériels
 router.get('/future-materiels', async (_req, res) => {
   try {
@@ -685,12 +685,7 @@ router.post('/future-materiels/check-serial', async (req, res) => {
 
     // Vérification dans la table des futurs matériels (sauf si c'est le document lui-même)
     const futureQuery: any = {
-      $or: [
-        { barcode: regex },
-        { codeSeriePropose: regex },
-        { barcode1: regex },
-        { barcode3: regex },
-      ]
+      codeSeriePropose: regex,
     };
     if (currentFutureId) {
       futureQuery._id = { $ne: currentFutureId };
@@ -708,32 +703,29 @@ router.post('/future-materiels/check-serial', async (req, res) => {
   }
 });
 
-// 3. Créer un futur matériel avec vérification préalable si barcode/série est fourni
+// 3. Créer un futur matériel
 router.post('/future-materiels', async (req, res) => {
   try {
     const data = req.body;
-    const serialToCheck = (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim();
+    const serialToCheck = (data.codeSeriePropose || '').trim();
 
-    // Si un barcode / code série a été détecté depuis la photo, vérifier l'existence avant enregistrement
     if (serialToCheck) {
       const regex = new RegExp(`^${serialToCheck.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       const conflictMat = await Materiel.findOne({ codeSerie: regex });
       if (conflictMat) {
         return res.status(400).json({
-          message: `Ce code série/barcode ("${serialToCheck}") existe déjà dans les matériels existants (${conflictMat.designation} - Réf: ${conflictMat.reference}).`,
-          field: 'barcode',
+          message: `Ce code série ("${serialToCheck}") existe déjà dans les matériels existants (${conflictMat.designation} - Réf: ${conflictMat.reference}).`,
+          field: 'codeSeriePropose',
           conflictType: 'materiel',
           conflictItem: conflictMat,
         });
       }
 
-      const conflictFuture = await FutureMateriel.findOne({
-        $or: [{ barcode: regex }, { codeSeriePropose: regex }, { barcode1: regex }, { barcode3: regex }]
-      });
+      const conflictFuture = await FutureMateriel.findOne({ codeSeriePropose: regex });
       if (conflictFuture) {
         return res.status(400).json({
-          message: `Ce code série/barcode ("${serialToCheck}") a déjà été enregistré dans un autre futur matériel (${conflictFuture.designation || conflictFuture.referenceProposee || 'Sans nom'}).`,
-          field: 'barcode',
+          message: `Ce code série ("${serialToCheck}") a déjà été enregistré dans un autre futur matériel (${conflictFuture.designation || conflictFuture.referenceProposee || 'Sans nom'}).`,
+          field: 'codeSeriePropose',
           conflictType: 'future',
           conflictItem: conflictFuture,
         });
@@ -744,16 +736,9 @@ router.post('/future-materiels', async (req, res) => {
       imageMateriel: data.imageMateriel || '',
       imageFicheMateriel: data.imageFicheMateriel || '',
       imageFacture: data.imageFacture || '',
-      imageBarcode: data.imageBarcode || '',
-      barcode: (data.barcode || data.barcode1 || '').trim(),
-      barcode1: (data.barcode1 || data.barcode || '').trim(),
-      barcode2: (data.barcode2 || '').trim(),
-      barcode3: (data.barcode3 || data.barcode || '').trim(),
-      barcode4: (data.barcode4 || '').trim(),
-      barcode5: (data.barcode5 || '').trim(),
       designation: (data.designation || '').trim(),
       referenceProposee: (data.referenceProposee || '').trim().toUpperCase(),
-      codeSeriePropose: (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim(),
+      codeSeriePropose: (data.codeSeriePropose || '').trim(),
       statut: data.statut || 'En attente',
       dateCreation: data.dateCreation || new Date().toISOString().split('T')[0],
       notes: data.notes || '',
@@ -775,18 +760,18 @@ router.put('/future-materiels/:id', async (req, res) => {
     }
 
     const data = req.body;
-    const serialToCheck = (data.barcode || data.codeSeriePropose || data.barcode1 || data.barcode3 || '').trim();
+    const serialToCheck = (data.codeSeriePropose || '').trim();
 
     if (serialToCheck) {
       const regex = new RegExp(`^${serialToCheck.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
       const conflictFuture = await FutureMateriel.findOne({
         _id: { $ne: doc._id },
-        $or: [{ barcode: regex }, { codeSeriePropose: regex }, { barcode1: regex }, { barcode3: regex }]
+        codeSeriePropose: regex
       });
       if (conflictFuture) {
         return res.status(400).json({
-          message: `Ce code série/barcode ("${serialToCheck}") est déjà utilisé par un autre futur matériel.`,
-          field: 'barcode',
+          message: `Ce code série ("${serialToCheck}") est déjà utilisé par un autre futur matériel.`,
+          field: 'codeSeriePropose',
         });
       }
     }
@@ -862,7 +847,7 @@ router.post('/future-materiels/:id/convert-to-materiel', async (req, res) => {
 
     const matData = req.body;
     // Vérification obligatoire par code série avant la transformation
-    const serial = (matData.codeSerie || doc.codeSeriePropose || doc.barcode1 || '').trim();
+    const serial = (matData.codeSerie || doc.codeSeriePropose || '').trim();
     if (!serial) {
       return res.status(400).json({
         message: 'Le code série est obligatoire pour valider et transformer ce futur matériel en matériel.',
